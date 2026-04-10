@@ -105,7 +105,6 @@ def diag_prediction_mimic3_fn(patient: Patient):
 
     return samples
 
-
 def drug_recommendation_mimic3_fn(patient: Patient):
 
     samples = []

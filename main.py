@@ -22,7 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--task", type=str, default="diag", choices=["diag", "drug"])
-    parser.add_argument("--model", type=str, default="TRANS")
+    parser.add_argument("--model", type=str, default="Transformer")
     parser.add_argument("--dataset", type=str, default="mimic3", choices=["mimic3", "mimic4", "ccae"])
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--dev", type=int, default=0)

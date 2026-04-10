@@ -5,9 +5,9 @@
 import math
 import torch
 import torch.nn as nn
-from modules.Seqmodels import *
-from modules.TSEncoder import *
-from modules.TRANS import TRANS, graph_meta
+from benchmarks.modules.Seqmodels import *
+from benchmarks.modules.TSEncoder import *
+from benchmarks.modules.TRANS import TRANS, graph_meta
 from utils import get_parent_tokenizers
 from torch.nn.utils.rnn import pack_padded_sequence, unpack_sequence
 
