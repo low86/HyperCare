@@ -1,0 +1,30 @@
+# 数据文件
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.bin
+*.tar.gz
+*.zip
+
+# 目录
+logs/
+data/
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# 环境
+.env
+venv/
+.venv/
+env/
+
+# 系统
+.DS_Store
+Thumbs.db
