@@ -131,8 +131,10 @@ class SimpleTrainer:
 
         best_val = float("inf")
         epoch_iter = range(1, self.args.epochs + 1)
+        epoch_pbar = None
         if self.args.show_progress:
-            epoch_iter = tqdm(epoch_iter, desc="Epoch", leave=True)
+            epoch_pbar = tqdm(epoch_iter, desc="Epoch", leave=True)
+            epoch_iter = epoch_pbar
         for epoch in epoch_iter:
             train_loss, _ = self._run_epoch(
                 train_loader, model, optimizer, train=True, do_metrics=False
@@ -140,6 +142,11 @@ class SimpleTrainer:
             val_loss, val_metrics = self._run_epoch(
                 val_loader, model, optimizer=None, train=False, do_metrics=True
             )
+            if epoch_pbar is not None:
+                epoch_pbar.set_postfix(
+                    train_loss=f"{train_loss:.4f}",
+                    val_loss=f"{val_loss:.4f}",
+                )
             if scheduler is not None:
                 scheduler.step()
 
@@ -148,13 +155,12 @@ class SimpleTrainer:
                 torch.save(model.state_dict(), ckpt_path)
 
             if self.args.eval_every > 0 and epoch % self.args.eval_every == 0:
-                self._print_epoch(epoch, train_loss, val_loss, val_metrics)
-                # Optional: run test evaluation periodically
+                # Only print test metrics periodically
                 _, _, test_loader = self.spec.dataloaders
-                test_loss, test_metrics = self._run_epoch(
+                _, test_metrics = self._run_epoch(
                     test_loader, model, optimizer=None, train=False, do_metrics=True
                 )
-                self._print_epoch(epoch, train_loss, test_loss, test_metrics)
+                self._print_test_epoch(epoch, test_metrics)
 
         return ckpt_path
 
@@ -243,6 +249,23 @@ class SimpleTrainer:
             f"val_loss={val_loss:.4f}"
         )
         print(msg)
+        if not metrics:
+            return
+        if "f1_samples" in metrics:
+            print(
+                f"[metrics] F1={metrics['f1_samples']:.4f} "
+                f"Jaccard={metrics['jaccard_samples']:.4f} "
+                f"PR-AUC={metrics['pr_auc_samples']:.4f} "
+                f"Precision={metrics['precision_samples']:.4f} "
+                f"ROC-AUC={metrics['roc_auc_samples']:.4f}"
+            )
+        if "visit_level" in metrics:
+            print(f"[metrics] visit_level={metrics['visit_level']}")
+        if "code_level" in metrics:
+            print(f"[metrics] code_level={metrics['code_level']}")
+
+    def _print_test_epoch(self, epoch: int, metrics: dict):
+        print(f"[epoch {epoch}] test metrics")
         if not metrics:
             return
         if "f1_samples" in metrics:

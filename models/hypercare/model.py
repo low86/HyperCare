@@ -14,80 +14,6 @@ from benchmarks.modules.Seqmodels import TransformerLayer
 from torch_scatter import scatter_add, scatter_mean, scatter_softmax, scatter_sum, scatter_max
 from models.hypercare.online_encoder import HypergraphEncoder
 
-# -------------------------------------------#
-# PatientSequenceEncoder
-# -------------------------------------------#
-class PatientSequenceEncoder(nn.Module):
-
-    def __init__(
-            self,
-            tokenizers: dict,
-            hidden_dim: int,
-            output_dim: int,
-            num_heads: int,
-            num_layers: int,
-            dropout: float = 0.5,
-            device: str = 'cuda'
-    ):
-        super(PatientSequenceEncoder, self).__init__()
-        self.device = torch.device(device)
-        self.num_heads = num_heads
-        self.num_layers = num_layers    
-        self.hidden_dim = hidden_dim
-        self.tokenizers = tokenizers
-        self.feature_keys = list(tokenizers.keys())
-
-        # embeddings
-        self.embeddings = nn.ModuleDict()
-        for key, tok in tokenizers.items():
-            self.embeddings[key] = nn.Embedding(
-                num_embeddings=tok.get_vocabulary_size(),
-                embedding_dim=hidden_dim,
-                padding_idx=tok.get_padding_index()
-            )
-
-        # transformer encoders
-        self.transformers = nn.ModuleDict({
-            key: TransformerLayer(feature_size=hidden_dim, heads=self.num_heads, dropout=dropout, num_layers=self.num_layers)
-            for key in self.feature_keys
-        })
-
-        self.bottleneck_fusion = BottleneckFusion(
-            dim=hidden_dim,
-            num_tokens=3,
-            num_heads=2,
-            num_layers=1
-        )
-
-        # output layer
-        self.fc = nn.Linear(hidden_dim * len(self.feature_keys), output_dim)
-        self.gammas = nn.Parameter(torch.zeros(len(self.feature_keys)))
-        self.to(self.device)
-
-    # ============== Forward ==============
-    def forward(self, batchdata):
-        patient_emb = []
-        patient_cls = []
-
-        for key in self.feature_keys:
-            tokenizer = self.tokenizers[key]
-            x = tokenizer.batch_encode_3d(batchdata[key])  # [B, T, L]
-            x = torch.tensor(x, dtype=torch.long, device=self.device)
-            x = self.embeddings[key](x)  # [B, T, L, H]
-            x = torch.sum(x, dim=2)  # [B, T, H]
-            mask = torch.any(x != 0, dim=2)
-            x_encoded, x_cls = self.transformers[key](x, mask)  # x: [B, H]
-            patient_emb.append(x_encoded)
-            patient_cls.append(x_cls)
-
-        fused = self.bottleneck_fusion(patient_emb)  # [B, K=M, D]
-        modality_reprs = [
-            cls + torch.sigmoid(self.gammas[i]) * (fused[:, i, :] - cls)
-            for i, cls in enumerate(patient_cls)
-        ]
-        patient_embs = torch.cat(modality_reprs, dim=1)  # [B, M*D]
-        seq_logits = self.fc(patient_embs)
-        return seq_logits, patient_embs
 
 
 # -------------------------------------------#
@@ -434,11 +360,14 @@ class HypergraphLayer(nn.Module):
         self.time2time = Time2TimeAggregator(hidden_dim=input_dim, num_heads=num_heads, time_decay_init=365.0, dropout=0.5)
         
         self.type2time = Type2TimeAggregator(input_dim, num_heads=num_heads, dropout=0.5, gamma_time=gamma_time, tau_time=tau_time)
+        self.time_residual_scale = nn.Parameter(torch.tensor(1.0))
 
     def forward(self, g):
         
         g = self.event2time(g)
         g = self.time2time(g)
+        if hasattr(g['time_hyperedge'], 'x0_proj'):
+            g['time_hyperedge'].x = g['time_hyperedge'].x + self.time_residual_scale * g['time_hyperedge'].x0_proj
         g = self.time2event(g)
         return g
 
@@ -448,11 +377,9 @@ class HypergraphModel(nn.Module):
         super().__init__()
         self.device = torch.device(device)
         self.encoder = HypergraphEncoder(tokenizer, hidden_dim, time_dim, device=self.device, feature_key_map=feature_key_map)
-        self.patient_encoder = PatientSequenceEncoder(tokenizer, hidden_dim, output_dim, num_heads, num_layers, device=self.device)
         self.layer = HypergraphLayer(hidden_dim, output_dim, time_dim, num_heads, gamma_time, tau_time)
         self.to(self.device)
-        self.alpha = nn.Parameter(torch.tensor(0.5))
-        self.fc_graph = nn.Linear(hidden_dim, output_dim)
+        self.fc = nn.Linear(hidden_dim, output_dim)
         self.num_layers = num_layers
         self.num_heads = num_heads
 
@@ -465,19 +392,14 @@ class HypergraphModel(nn.Module):
             'proc_hyperedge': Linear(-1, hidden_dim),
             'drug_hyperedge': Linear(-1, hidden_dim),
         })
-        self.out_lin = nn.Linear(hidden_dim*3, hidden_dim)
-        self.mask_token = nn.Parameter(torch.randn(hidden_dim) * 0.02)
 
-        self.writer = None
-        self.global_step = 0
-
-    def build_hypergraph_batch(self, graph_list, patient_emb):
+    def build_hypergraph_batch(self, graph_list):
         """
         graph_list: list of offline graphs for the batch
         """
         h_list = []
         for i, gdict in enumerate(graph_list):
-            g = self.encoder(gdict, patient_emb[i])  # embedding lookup
+            g = self.encoder(gdict)  # embedding lookup
             h_list.append(g)
        
         return Batch.from_data_list(h_list)
@@ -486,12 +408,7 @@ class HypergraphModel(nn.Module):
     def forward(self, batchdata):
   
         seqdata, graph_list = batchdata
-        seq_logits, patient_emb = self.patient_encoder(seqdata)  # [B, D]
-
-        patient_emb = self.out_lin(patient_emb)  # [B, hidden_dim]
-
-
-        g_batch = self.build_hypergraph_batch(graph_list, patient_emb)
+        g_batch = self.build_hypergraph_batch(graph_list)
 
         for node_type in g_batch.node_types:
             g_batch[node_type].x = self.node_projs[node_type](g_batch[node_type].x)
@@ -507,10 +424,8 @@ class HypergraphModel(nn.Module):
 
         last_time_embeds = time_embeds[last_idx]  # [num_patients, hidden_dim]
         # --- Prediction ---
-        graph_out = self.fc_graph(last_time_embeds)  # [B, output_dim]
-        # --- Fusion ---
-        fused_out = self.alpha * graph_out + (1 - self.alpha) * seq_logits
+        graph_out = self.fc(last_time_embeds)  # [B, output_dim]
+
         fused_out = graph_out
 
         return fused_out
-

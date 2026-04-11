@@ -35,7 +35,7 @@ class HypergraphEncoder(nn.Module):
         self.drug_emb = nn.Embedding(self.d_tokenizer.get_vocabulary_size(), hidden_dim)
         self.time2vec = Time2Vec(time_dim).to(self.device)
         self.global_type_emb = nn.Embedding(3, hidden_dim).to(self.device)
-        self.note_projection = nn.Linear(256*3, 64).to(self.device)
+        self.note_projection = nn.Linear(self.time_dim + 768, 256).to(self.device)
 
     def _unique_token_ids(self, tokens_2d):
         # tokens_2d: list of lists (may include empty lists)
@@ -91,7 +91,7 @@ class HypergraphEncoder(nn.Module):
 
         return data
 
-    def _fill_node_features(self, data, patient, patient_emb, cond_tokens, proc_tokens, drug_tokens, note_emb):
+    def _fill_node_features(self, data, patient, cond_tokens, proc_tokens, drug_tokens, note_emb):
         # --- time embeddings & time node features ---
         if isinstance(patient.get("rel_adm_time", None), torch.Tensor):
             visit_times = patient["rel_adm_time"].to(self.device)
@@ -102,13 +102,19 @@ class HypergraphEncoder(nn.Module):
         num_visit = data['time_hyperedge'].num_nodes
 
         if num_visit > 0:
-            # compute time embedding once
-            time_emb = self.time2vec(visit_times)  # [num_visit, time_dim]
+            # use precomputed time_emb if available; otherwise compute
+            time_emb = patient.get("time_emb", None)
+            if time_emb is None:
+                time_emb = self.time2vec(visit_times)  # [num_visit, time_dim]
+            else:
+                if isinstance(time_emb, torch.Tensor):
+                    time_emb = time_emb.to(self.device, dtype=torch.float32)
+                else:
+                    time_emb = torch.tensor(time_emb, dtype=torch.float32, device=self.device)
+                assert time_emb.shape[0] == num_visit, \
+                    f"time_emb visits {time_emb.shape[0]} != num_visit {num_visit}"
 
             data['time_hyperedge'].adm_time = visit_times
-            # ensure patient_emb on device and correct shape [hidden_dim]
-            if patient_emb.device != self.device:
-                patient_emb = patient_emb.to(self.device)
 
             # include note_emb from offline construction if provided
             if note_emb is not None:
@@ -118,15 +124,14 @@ class HypergraphEncoder(nn.Module):
                     note_emb = torch.tensor(note_emb, dtype=torch.float32, device=self.device)
                 assert note_emb.shape[0] == num_visit, \
                     f"note_emb visits {note_emb.shape[0]} != num_visit {num_visit}"
-                note_emb = self.note_projection(note_emb)
             else:
-                note_emb = torch.zeros((num_visit, 256), device=self.device)
+                note_emb = torch.zeros((num_visit, 768), device=self.device)
 
-            patient_part = patient_emb.unsqueeze(0).repeat(num_visit, 1)
-
-            data['time_hyperedge'].x = torch.cat(
-                [patient_part, time_emb, note_emb], dim=-1
-            )
+            x0 = torch.cat([time_emb, note_emb], dim=-1)  # [num_visit, time_dim + 768]
+            x0_proj = self.note_projection(x0)  # [num_visit, 256]
+            data['time_hyperedge'].x = x0_proj
+            data['time_hyperedge'].x0 = x0.detach()
+            data['time_hyperedge'].x0_proj = x0_proj.detach()
 
         else:
             data['time_hyperedge'].adm_time = torch.empty((0,), dtype=visit_times.dtype, device=self.device)
@@ -201,7 +206,7 @@ class HypergraphEncoder(nn.Module):
         if data['drug'].num_nodes > 0:
             assert data['drug'].x.shape[-1] == (self.hidden_dim + self.time_dim)
 
-    def forward(self, patient, patient_emb):
+    def forward(self, patient):
         struct = patient['structure']
         data = self._rebuild_heterodata_from_structure(struct)
 
@@ -211,11 +216,5 @@ class HypergraphEncoder(nn.Module):
 
         note_emb = patient.get('note_emb', None)
 
-        if patient_emb.device != self.device:
-            patient_emb = patient_emb.to(self.device)
-
-        self._fill_node_features(data, patient, patient_emb, cond_tokens, proc_tokens, drug_tokens, note_emb)
+        self._fill_node_features(data, patient, cond_tokens, proc_tokens, drug_tokens, note_emb)
         return data
-
-
-

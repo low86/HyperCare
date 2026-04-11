@@ -69,7 +69,7 @@ class TaskSpec:
 
             os.makedirs(args.output_dir, exist_ok=True)
             cache_path = os.path.join(
-                args.output_dir, f"{args.task}_{args.dataset}_hypercare.pt"
+                args.output_dir, f"{args.task}_{args.dataset}_hypercare_t{args.time_dim}.pt"
             )
             if os.path.exists(cache_path):
                 mdataset = load(cache_path)
@@ -81,6 +81,7 @@ class TaskSpec:
                     note_emb_dict,
                     device="cpu",
                     feature_key_map=feature_key_map,
+                    time_dim=args.time_dim,
                 )
                 dump(mdataset, cache_path)
             trainset, validset, testset = split_dataset(mdataset)

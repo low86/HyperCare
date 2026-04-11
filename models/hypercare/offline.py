@@ -5,6 +5,7 @@ from core.utils import *
 from tqdm import tqdm
 from pyhealth.data import  Patient
 from torch.utils.data import  Dataset
+from benchmarks.modules.TSEncoder import Time2Vec
 
 
 
@@ -32,7 +33,7 @@ class Hypergraph:
     All edge tensors are stored on CPU as int64 for easy serialization/sharing.
     """
 
-    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None):
+    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None, time_dim: int | None = None):
         """
         sequence_dataset: list-like of samples (e.g., task_dataset.samples or MMDataset.sequence_dataset)
         tokenizers: dict-like containing keys such as 'cond_hist'/'procedures'/'drugs',
@@ -46,6 +47,12 @@ class Hypergraph:
         if feature_key_map is None:
             feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
         self.feature_key_map = feature_key_map
+        self.time_dim = time_dim
+        if time_dim is not None:
+            self.time2vec = Time2Vec(time_dim)
+            self.time2vec.eval()
+        else:
+            self.time2vec = None
 
     def build_all_in_one(self):
         """
@@ -107,6 +114,10 @@ class Hypergraph:
             raise RuntimeError("convert_to_relative_time not found or failed to run") from e
 
         rel_time_tensor = torch.tensor(rel_time, dtype=torch.float32, device='cpu')
+        time_emb = None
+        if self.time2vec is not None:
+            with torch.no_grad():
+                time_emb = self.time2vec(rel_time_tensor).detach().cpu()
 
         # ---- build structure (aligned with your previous _build_structure logic) ----
         edges = {}
@@ -255,6 +266,7 @@ class Hypergraph:
 
             "adm_time": adm_time_raw,                 # raw time string list (optional)
             "rel_adm_time": rel_time_tensor,         # relative time tensor (CPU)
+            "time_emb": time_emb,                    # time embedding (CPU) if precomputed
             "note_emb": note_emb,
 
             "structure": struct,
@@ -264,13 +276,13 @@ class Hypergraph:
         return out
 
 class MMDataset(Dataset):
-    def __init__(self, dataset, tokenizer, note_emb_dict, device, feature_key_map: dict | None = None):
+    def __init__(self, dataset, tokenizer, note_emb_dict, device, feature_key_map: dict | None = None, time_dim: int | None = None):
         self.sequence_dataset = dataset.samples
         self.tokenizer = tokenizer
         self.note_emb_dict = note_emb_dict
         self.device = device
         # Offline hypergraph: build once at initialization
-        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map)
+        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map, time_dim=time_dim)
         self.graph_data = hg_builder.build_all_in_one()  # list of graph dicts
 
     def __len__(self):
