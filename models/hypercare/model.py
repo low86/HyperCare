@@ -509,12 +509,8 @@ class HypergraphModel(nn.Module):
         # --- Prediction ---
         graph_out = self.fc_graph(last_time_embeds)  # [B, output_dim]
         # --- Fusion ---
-        # fused_out = self.alpha * graph_out + (1 - self.alpha) * seq_logits
+        fused_out = self.alpha * graph_out + (1 - self.alpha) * seq_logits
         fused_out = graph_out
 
-        if self.writer is not None and self.training:
-            self.writer.add_scalar('Parameters/alpha', self.alpha.item(), self.global_step)
-            self.global_step += 1
-        # fused_out = seq_logits
         return fused_out
 

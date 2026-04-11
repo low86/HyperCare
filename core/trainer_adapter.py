@@ -149,6 +149,12 @@ class SimpleTrainer:
 
             if self.args.eval_every > 0 and epoch % self.args.eval_every == 0:
                 self._print_epoch(epoch, train_loss, val_loss, val_metrics)
+                # Optional: run test evaluation periodically
+                _, _, test_loader = self.spec.dataloaders
+                test_loss, test_metrics = self._run_epoch(
+                    test_loader, model, optimizer=None, train=False, do_metrics=True
+                )
+                self._print_epoch(epoch, train_loss, test_loss, test_metrics)
 
         return ckpt_path
 

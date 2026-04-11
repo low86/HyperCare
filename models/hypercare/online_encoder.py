@@ -35,7 +35,7 @@ class HypergraphEncoder(nn.Module):
         self.drug_emb = nn.Embedding(self.d_tokenizer.get_vocabulary_size(), hidden_dim)
         self.time2vec = Time2Vec(time_dim).to(self.device)
         self.global_type_emb = nn.Embedding(3, hidden_dim).to(self.device)
-        self.note_projection = nn.Linear(256*3, 256).to(self.device)
+        self.note_projection = nn.Linear(256*3, 64).to(self.device)
 
     def _unique_token_ids(self, tokens_2d):
         # tokens_2d: list of lists (may include empty lists)
@@ -125,7 +125,7 @@ class HypergraphEncoder(nn.Module):
             patient_part = patient_emb.unsqueeze(0).repeat(num_visit, 1)
 
             data['time_hyperedge'].x = torch.cat(
-                [time_emb, note_emb], dim=-1
+                [patient_part, time_emb, note_emb], dim=-1
             )
 
         else:

@@ -105,9 +105,9 @@ def diag_prediction_mimic3_fn(patient: Patient):
 def drug_recommendation_mimic3_fn(patient: Patient):
 
     samples = []
-    visit_ls = list(patient.visits.keys())
-    for i in range(len(visit_ls)):
-        visit = patient.visits[visit_ls[i]]
+    visit_ls = list(patient.visits.values())
+    visit_ls = sorted(visit_ls, key=lambda v: v.encounter_time)
+    for i, visit in enumerate(visit_ls):
         conditions = visit.get_code_list(table="DIAGNOSES_ICD")
         procedures = visit.get_code_list(table="PROCEDURES_ICD")
         drugs = visit.get_code_list(table="PRESCRIPTIONS")
@@ -156,7 +156,6 @@ def drug_recommendation_mimic3_fn(patient: Patient):
         samples[i]["drugs_hist"][i] = []
 
     return samples
-
 
 def drug_recommendation_mimic4_fn(patient: Patient):
     
