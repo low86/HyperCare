@@ -1,1 +1,1 @@
-Role-Aware Hypergraph Learning for Robust Healthcare Prediction
+HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction
