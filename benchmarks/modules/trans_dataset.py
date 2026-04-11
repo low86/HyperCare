@@ -4,7 +4,7 @@ from torch_geometric.data import HeteroData
 from tqdm import tqdm
 
 from benchmarks.modules.TSEncoder import AddGlobalLaplacianPE, AddMetaPathRandomWalkSE
-from utils import convert_to_relative_time
+from core.utils import convert_to_relative_time
 
 
 class PatientGraph(torch.utils.data.Dataset):

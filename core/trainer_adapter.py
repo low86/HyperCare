@@ -9,9 +9,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from benchmarks.metrics import compute_metrics
-from utils import prepare_labels
+from core.utils import prepare_labels
 
 
 class BaseAdapter:
@@ -118,6 +119,13 @@ class SimpleTrainer:
             lr=self.args.lr,
             weight_decay=self.args.weight_decay,
         )
+        scheduler = None
+        if getattr(self.args, "scheduler", "none") == "cosine":
+            scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=getattr(self.args, "t_max", self.args.epochs),
+                eta_min=getattr(self.args, "eta_min", 1e-6),
+            )
         os.makedirs(self.args.output_dir, exist_ok=True)
         ckpt_path = self._ckpt_path()
 
@@ -132,6 +140,8 @@ class SimpleTrainer:
             val_loss, val_metrics = self._run_epoch(
                 val_loader, model, optimizer=None, train=False, do_metrics=True
             )
+            if scheduler is not None:
+                scheduler.step()
 
             if val_loss < best_val:
                 best_val = val_loss

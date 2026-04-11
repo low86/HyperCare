@@ -15,21 +15,21 @@ from core.trainer_adapter import pick_trainer
 
 # Supported baselines:
 # - task=drug: Transformer, RETAIN, StageNet, Deepr, AdaCare, ConCare, GRASP,
-#              DrAgent, SafeDrug, GAMENet, MICRON, MoleRec, TRANS
-# - task=diag: Transformer, RETAIN, StageNet, KAME, TRANS
+#              DrAgent, SafeDrug, GAMENet, MICRON, MoleRec, TRANS, HyperCare
+# - task=diag: Transformer, RETAIN, StageNet, KAME, TRANS, HyperCare
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--task", type=str, default="diag", choices=["diag", "drug"])
-    parser.add_argument("--model", type=str, default="Transformer")
+    parser.add_argument("--task", type=str, default="drug", choices=["diag", "drug"])
+    parser.add_argument("--model", type=str, default="HyperCare")
     parser.add_argument("--dataset", type=str, default="mimic3", choices=["mimic3", "mimic4", "ccae"])
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--dev", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--devm", type=bool, default=False)
     parser.add_argument("--data_root", type=str, default="")
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--eval_every", type=int, default=5)
@@ -46,6 +46,11 @@ def parse_args():
     parser.add_argument("--num_layers", type=int, default=2, help="number of layers in graph model")
     parser.add_argument("--gamma_time", type=float, default=0.8,help="initial gamma_time")
     parser.add_argument("--tau_time", type=float, default=4.0, help="initial tau_time in days")
+    parser.add_argument("--note_emb_path", type=str, default="")
+    parser.add_argument("--scheduler", type=str, default="cosine", choices=["none", "cosine"])
+    parser.add_argument("--t_max", type=int, default=40,
+        help="CosineAnnealingLR period (in epochs); set to epochs for a full cycle",
+    )
     return parser.parse_args()
 
 
@@ -70,6 +75,13 @@ def resolve_data_root(args):
 def main():
     args = parse_args()
     args.data_root = resolve_data_root(args)
+    if not args.note_emb_path:
+        note_emb_root = {
+            "mimic3": "./logs/mimic3_emb_dict.npy",
+            "mimic4": "./logs/mimic4_emb_dict.npy",
+            "ccae": "./logs/ccae_emb_dict.npy",
+        }
+        args.note_emb_path = note_emb_root.get(args.dataset, "./logs/mimic3_emb_dict.npy")
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     set_seed(args.seed)

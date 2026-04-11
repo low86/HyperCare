@@ -3,6 +3,7 @@
 # Model Task Spec #
 ######################################
 import os
+import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -12,7 +13,8 @@ from pyhealth.tokenizer import Tokenizer
 
 from core.registry import TASK_SPECS
 from benchmarks.modules.trans_dataset import MMDataset as TransMMDataset
-from utils import (
+from models.hypercare.offline import MMDataset as HyperCareDataset
+from core.utils import (
     get_init_tokenizers,
     get_label_tokenizer,
     load_dataset,
@@ -47,6 +49,7 @@ class TaskSpec:
             root=args.data_root,
             task_fn=spec["task_fn"][args.dataset],
             dev=args.devm,
+            use_icd_raw=(args.model == "KAME"),
         )
 
         tokenizers = get_init_tokenizers(task_dataset, keys=spec["feature_keys"])
@@ -54,7 +57,37 @@ class TaskSpec:
             task_dataset.get_all_tokens(spec["label_key"])
         )
 
-        if args.model == "TRANS":
+        if args.model == "HyperCare":
+            if not os.path.exists(args.note_emb_path):
+                raise FileNotFoundError(f"note_emb_path not found: {args.note_emb_path}")
+            if args.task == "diag":
+                feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
+            elif args.task == "drug":
+                feature_key_map = {"cond": "conditions", "proc": "procedures", "drug": "drugs_hist"}
+            else:
+                raise ValueError(f"HyperCare does not support task: {args.task}")
+
+            os.makedirs(args.output_dir, exist_ok=True)
+            cache_path = os.path.join(
+                args.output_dir, f"{args.task}_{args.dataset}_hypercare.pt"
+            )
+            if os.path.exists(cache_path):
+                mdataset = load(cache_path)
+            else:
+                note_emb_dict = np.load(args.note_emb_path, allow_pickle=True).item()
+                mdataset = HyperCareDataset(
+                    task_dataset,
+                    tokenizers,
+                    note_emb_dict,
+                    device="cpu",
+                    feature_key_map=feature_key_map,
+                )
+                dump(mdataset, cache_path)
+            trainset, validset, testset = split_dataset(mdataset)
+            dataloaders = mm_dataloader(
+                trainset, validset, testset, batch_size=args.batch_size
+            )
+        elif args.model == "TRANS":
             if "procedures" not in spec["feature_keys"]:
                 raise ValueError("TRANS requires procedures feature in task spec.")
             if "cond_hist" in spec["feature_keys"]:

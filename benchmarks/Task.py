@@ -6,9 +6,6 @@ from tqdm import *
 from pyhealth.data import  Patient
 from torch.utils.data import  Dataset
 from pyhealth.medcode import CrossMap
-mapping = CrossMap("ICD10CM", "CCSCM")
-mapping3 = CrossMap("ICD9CM", "CCSCM")
-
 
 def diag_prediction_mimic4_fn(patient: Patient):
 

@@ -47,21 +47,41 @@ def convert_to_relative_time(datetime_strings):
     base_time = min(datetimes)
     return [timedelta_to_days(dt - base_time) for dt in datetimes]
 
-def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "prescriptions"], task_fn = None, dev = False):
+def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "prescriptions"], task_fn = None, dev = False, use_icd_raw: bool = False):
     if dataset=='mimic3':
+        code_mapping = {
+            "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
+            "ICD9CM": "CCSCM",
+            "ICD9PROC": "CCSPROC",
+        }
+        if use_icd_raw:
+            code_mapping = {
+                "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
+            }
         dataset = MIMIC3Dataset(
             root = root,
             dev = dev,
             tables = ['DIAGNOSES_ICD', 'PROCEDURES_ICD', 'PRESCRIPTIONS'], 
-            code_mapping={"NDC": ("ATC", {"target_kwargs": {"level": 3}})},
+            code_mapping=code_mapping,
             refresh_cache=False,
         )
     elif dataset == 'mimic4':
+        code_mapping = {
+            "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
+            "ICD9CM": "CCSCM",
+            "ICD9PROC": "CCSPROC",
+            "ICD10CM": "CCSCM",
+            "ICD10PROC": "CCSPROC",
+        }
+        if use_icd_raw:
+            code_mapping = {
+                "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
+            }
         dataset = MIMIC4Dataset(
             root=root,
             dev=dev,
             tables=tables, 
-            code_mapping={"NDC": ("ATC", {"target_kwargs": {"level": 3}})},
+            code_mapping=code_mapping,
             refresh_cache=False,
         )
     else:
@@ -137,55 +157,3 @@ def seq_dataloader(dataset, split_ratio = [0.75, 0.1, 0.15], batch_size = 64):
     val_loader = get_dataloader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = get_dataloader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader, test_loader
-
-
-
-def train(data_loader, model, label_tokenizer, optimizer, device):
-    train_loss = 0
-    for data in data_loader:
-        model.train()
-        optimizer.zero_grad()
-        if type(data)==dict:
-            label = prepare_labels(data['conditions'],label_tokenizer).to(device)
-        else:
-            label = prepare_labels(data[0]['conditions'],label_tokenizer).to(device)
-        out, _= model(data)
-        loss = F.binary_cross_entropy_with_logits(out,label)
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.detach().cpu().numpy()
-    return  train_loss
-
-
-def valid(data_loader, model, label_tokenizer, device):
-    val_loss= 0
-    with torch.no_grad():
-        for data in data_loader:
-            model.eval()
-            if type(data)==dict:    
-                label = prepare_labels(data['conditions'],label_tokenizer).to(device)
-            else:
-                label = prepare_labels(data[0]['conditions'],label_tokenizer).to(device)   
-            out, _ = model(data)
-            loss = F.binary_cross_entropy_with_logits(out,label)
-            total_loss = loss 
-            val_loss += total_loss.detach().cpu().numpy()
-    return val_loss
-
-def test(data_loader, model, label_tokenizer):
-    y_t_all, y_p_all = [], []
-    with torch.no_grad():
-        for data in tqdm(data_loader):
-            model.eval()
-            if type(data)==dict:
-                label = prepare_labels(data['conditions'],label_tokenizer)
-            else:
-                label = prepare_labels(data[0]['conditions'],label_tokenizer)
-            out, _ = model(data)
-            y_t = label.cpu().numpy()
-            y_p = torch.sigmoid(out).detach().cpu().numpy()
-            y_t_all.append(y_t)
-            y_p_all.append(y_p)
-        y_true = np.concatenate(y_t_all, axis=0)
-        y_prob = np.concatenate(y_p_all, axis=0)
-    return y_true, y_prob

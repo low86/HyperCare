@@ -4,8 +4,8 @@
 ######################################
 import os
 from joblib import dump, load
-from graph.GraphBuilder import MMDataset
-from utils import *
+from models.hypercare.offline import MMDataset
+from core.utils import *
 from benchmarks.Task import *
 from benchmarks.modules.TRANS import *
 from pyhealth.models import (
@@ -22,12 +22,27 @@ from pyhealth.models import (
     StageNet,
     Transformer
 )
+from models.hypercare.model import HypergraphModel
 
 # =========================
 # model factory
 # =========================
 def build_model(model_name, task_dataset, tokenizers, device, args):
     label_size = len(task_dataset.get_all_tokens("drugs"))
+
+    if model_name == "HyperCare":
+        return HypergraphModel(
+            tokenizers,
+            hidden_dim=args.hidden_dim,
+            time_dim=args.time_dim,
+            output_dim=label_size,
+            num_heads=args.num_heads,
+            num_layers=args.num_layers,
+            gamma_time=args.gamma_time,
+            tau_time=args.tau_time,
+            device=device,
+            feature_key_map={"cond": "conditions", "proc": "procedures", "drug": "drugs_hist"},
+        )
 
     if model_name == "Transformer":
         return Transformer(

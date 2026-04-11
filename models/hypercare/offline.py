@@ -1,7 +1,7 @@
 # offline_hypergraph.py
 import os
 import torch
-from utils import *
+from core.utils import *
 from tqdm import tqdm
 from pyhealth.data import  Patient
 from torch.utils.data import  Dataset
@@ -31,7 +31,7 @@ class Hypergraph:
     其中 edges 的 tensor 全部保存在 CPU 上的 int64 tensor（便于序列化/共享）。
     """
 
-    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu"):
+    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None):
         """
         sequence_dataset: list-like of samples (如 task_dataset.samples 或 MMDataset.sequence_dataset)
         tokenizers: dict-like 包含 keys: 'cond_hist'/'procedures'/'drugs'，并提供 batch_encode_2d 方法
@@ -41,6 +41,9 @@ class Hypergraph:
         self.tokenizers = tokenizers
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
+        if feature_key_map is None:
+            feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
+        self.feature_key_map = feature_key_map
 
     def build_all_in_one(self):
         """
@@ -63,9 +66,9 @@ class Hypergraph:
         """
         # ---- 基本字段 ----
         patient_id = sample["patient_id"]
-        cond_hist = sample["cond_hist"]      # List[List[str]]
-        procedures = sample["procedures"]    # List[List[str]]
-        drugs = sample["drugs"]              # List[List[str]]
+        cond_hist = sample[self.feature_key_map["cond"]]      # List[List[str]]
+        procedures = sample[self.feature_key_map["proc"]]    # List[List[str]]
+        drugs = sample[self.feature_key_map["drug"]]              # List[List[str]]
         adm_time_raw = sample["adm_time"]    # List[str] (原始时间字符串)
         visit_ids = sample["visit_history"]       # 按时间顺序
 
@@ -88,9 +91,9 @@ class Hypergraph:
         # ---- tokenization（严格使用 batch_encode_2d）----
         # 使用你给的 tokenizer 接口名：batch_encode_2d(..., padding=False)
         # 如果 tokenizer 的 key 不同，请在调用方传入合适的 dict
-        cond_tokens = self.tokenizers['cond_hist'].batch_encode_2d(cond_hist, padding=False)
-        proc_tokens = self.tokenizers['procedures'].batch_encode_2d(procedures, padding=False)
-        drug_tokens = self.tokenizers['drugs'].batch_encode_2d(drugs, padding=False)
+        cond_tokens = self.tokenizers[self.feature_key_map['cond']].batch_encode_2d(cond_hist, padding=False)
+        proc_tokens = self.tokenizers[self.feature_key_map['proc']].batch_encode_2d(procedures, padding=False)
+        drug_tokens = self.tokenizers[self.feature_key_map['drug']].batch_encode_2d(drugs, padding=False)
 
         # visit count
         num_visit = len(procedures)
@@ -260,13 +263,13 @@ class Hypergraph:
         return out
 
 class MMDataset(Dataset):
-    def __init__(self, dataset, tokenizer, note_emb_dict, device):
+    def __init__(self, dataset, tokenizer, note_emb_dict, device, feature_key_map: dict | None = None):
         self.sequence_dataset = dataset.samples
         self.tokenizer = tokenizer
         self.note_emb_dict = note_emb_dict
         self.device = device
         # 离线构图：一次性构建
-        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device)
+        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map)
         self.graph_data = hg_builder.build_all_in_one()  # list of graph dicts
 
     def __len__(self):

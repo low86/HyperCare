@@ -2,14 +2,21 @@
 # 2026-2-2 #
 # Diagnosis baselines #
 ######################################
+# NOTE:
+# We do not use the official pyhealth baseline implementations here because some samples
+# contain empty feature lists (e.g., empty codes per visit), which can cause failures or
+# misaligned batching in the default pipeline. These local baselines are designed to
+# handle empty inputs robustly and keep the data flow consistent for our diagnosis tasks.
 import math
 import torch
 import torch.nn as nn
 from benchmarks.modules.Seqmodels import *
 from benchmarks.modules.TSEncoder import *
 from benchmarks.modules.TRANS import TRANS, graph_meta
-from utils import get_parent_tokenizers
+from core.utils import get_parent_tokenizers
 from torch.nn.utils.rnn import pack_padded_sequence, unpack_sequence
+from pyhealth.medcode import InnerMap
+from models.hypercare.model import HypergraphModel
 
 # -------------------------------------------#
 # Transformer #
@@ -388,6 +395,20 @@ class KAME(nn.Module):
 # =========================
 def build_model(model_name, task_dataset, tokenizers, device, args):
     label_size = len(task_dataset.get_all_tokens("conditions"))
+
+    if model_name == "HyperCare":
+        return HypergraphModel(
+            tokenizers,
+            hidden_dim=args.hidden_dim,
+            time_dim=args.time_dim,
+            output_dim=label_size,
+            num_heads=args.num_heads,
+            num_layers=args.num_layers,
+            gamma_time=args.gamma_time,
+            tau_time=args.tau_time,
+            device=device,
+            feature_key_map={"cond": "cond_hist", "proc": "procedures", "drug": "drugs"},
+        )
 
     if model_name == "Transformer":
         return Transformer(tokenizers, label_size, device)
