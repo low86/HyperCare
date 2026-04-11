@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, AutoModel
 from pyhealth.medcode import InnerMap
 
 # -----------------------------
-# 固定全局种子（可选，推荐放在脚本最前面）
+# Set a global seed (optional, recommended at the top of the script)
 # -----------------------------
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -15,7 +15,7 @@ def set_seed(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-# 如果你希望整个过程可复现，可以在调用前执行：
+# If you want reproducible runs, call set_seed(42) before running.
 # set_seed(42)
 
 icd9cm = InnerMap.load("ICD9CM")
@@ -24,7 +24,7 @@ atc = InnerMap.load("ATC")
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # -----------------------------
-# 1. 加载 ClinicalBERT
+# 1. Load ClinicalBERT
 # -----------------------------
 def load_med_text_encoder(model_name="emilyalsentzer/Bio_ClinicalBERT"):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -33,7 +33,7 @@ def load_med_text_encoder(model_name="emilyalsentzer/Bio_ClinicalBERT"):
 
 
 # -----------------------------
-# 2. 文本编码为 CLS 向量
+# 2. Encode text into a CLS vector
 # -----------------------------
 def encode_text(model, tokenizer, text: str, device="cpu"):
     token = tokenizer(text, return_tensors="pt", truncation=True, max_length=32).to(device)
@@ -81,15 +81,15 @@ def add_codes(code_set, entry):
         return
     if isinstance(entry, list):
         for x in entry:
-            if isinstance(x, list):      # 嵌套 list
+            if isinstance(x, list):      # nested list
                 for c in x:
                     code_set.add(c)
-            else:                        # 普通平面 list
+            else:                        # flat list
                 code_set.add(x)
 
 
 # -----------------------------
-# 4. 适配你 task_dataset 的版本
+# 4. Adapt for your task_dataset version
 # -----------------------------
 # def build_semantic_emb(task_dataset, device="cpu"):
 #     print(">>> Loading ClinicalBERT...")
@@ -101,7 +101,7 @@ def add_codes(code_set, entry):
 #     model = model.to(device)
 #     # model.eval()
 
-#     # ⭐ 新增：离线语义投影层
+#     # New: offline semantic projection layer
 #     torch.manual_seed(seed)
 #     # projector = nn.Linear(768, out_dim).to(device)
 #     # projector.eval()
@@ -120,7 +120,7 @@ def add_codes(code_set, entry):
 #     semantic_emb = {}
 #     missing = 0
 
-#     # 2. 为每个 code 生成语义 embedding
+#     # 2. Build semantic embedding for each code
 #     for code in code_set:
 #         text = code_to_text(code)
 #         if text is None:
@@ -149,7 +149,7 @@ def build_semantic_emb(task_dataset, device="cpu", out_dim=64, seed=42):
 
     print(f">>> Total unique codes: {len(code_set)}")
 
-    # 第一步：收集所有有效的 768 维嵌入
+    # Step 1: collect valid 768-d embeddings
     valid_embeddings = []
     valid_codes = []
 
@@ -167,22 +167,22 @@ def build_semantic_emb(task_dataset, device="cpu", out_dim=64, seed=42):
     print(f">>> Missing text: {missing}/{len(code_set)}")
     print(f">>> Valid codes for PCA: {len(valid_embeddings)}")
 
-    # 第二步：训练 PCA（固定随机种子确保可复现）
+    # Step 2: fit PCA (fixed random seed for reproducibility)
     pca = PCA(n_components=out_dim, random_state=seed)
     pca.fit(valid_embeddings)
 
-    # 第三步：构建最终嵌入字典
+    # Step 3: build final embedding dict
     semantic_emb = {}
     reduced = pca.transform(valid_embeddings)
 
     for code, emb_low in zip(valid_codes, reduced):
         semantic_emb[code] = torch.tensor(emb_low)
 
-    # missing code 用均值或零向量（推荐用 PCA 均值）
+    # Missing codes use the mean embedding (better than all zeros)
     mean_emb = torch.tensor(pca.mean_)
     for code in code_set:
         if code not in semantic_emb:
-            semantic_emb[code] = mean_emb  # 比全零更好
+            semantic_emb[code] = mean_emb
 
     print(">>> Semantic embedding build done with PCA.")
     return semantic_emb

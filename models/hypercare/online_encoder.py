@@ -1,11 +1,8 @@
 ######################################
-# 2025-10-28 #
+# 2025-2-28 #
 # Online Hypergraph Generator Version #
 ######################################
 
-from random import random
-import sys
-import math
 import torch
 from core.utils import *
 import torch.nn as nn
@@ -38,10 +35,10 @@ class HypergraphEncoder(nn.Module):
         self.drug_emb = nn.Embedding(self.d_tokenizer.get_vocabulary_size(), hidden_dim)
         self.time2vec = Time2Vec(time_dim).to(self.device)
         self.global_type_emb = nn.Embedding(3, hidden_dim).to(self.device)
-        self.note_projection = nn.Linear(256*3, 64).to(self.device)
+        self.note_projection = nn.Linear(256*3, 256).to(self.device)
 
     def _unique_token_ids(self, tokens_2d):
-        # tokens_2d: list of lists (可能有空列表)
+        # tokens_2d: list of lists (may include empty lists)
         if len(tokens_2d) == 0:
             return torch.empty((0,), dtype=torch.long, device=self.device)
         # flatten
@@ -112,9 +109,8 @@ class HypergraphEncoder(nn.Module):
             # ensure patient_emb on device and correct shape [hidden_dim]
             if patient_emb.device != self.device:
                 patient_emb = patient_emb.to(self.device)
-            # =====================================================
-            # >>>>> 修改开始：加入 note_emb（来自离线构图） <<<<<
-            # =====================================================
+
+            # include note_emb from offline construction if provided
             if note_emb is not None:
                 if isinstance(note_emb, torch.Tensor):
                     note_emb = note_emb.to(device=self.device, dtype=torch.float32)
@@ -220,5 +216,6 @@ class HypergraphEncoder(nn.Module):
 
         self._fill_node_features(data, patient, patient_emb, cond_tokens, proc_tokens, drug_tokens, note_emb)
         return data
+
 
 

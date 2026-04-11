@@ -10,9 +10,10 @@ from torch.utils.data import  Dataset
 
 class Hypergraph:
     """
-    离线构建 hypergraph 结构并保存到 ./graph/cache/{patient_id}.pt
+    Build offline hypergraph structures and return a dict that can be saved
+    (e.g., to ./graph/cache/{patient_id}.pt).
 
-    输出格式（torch.save 的 dict）:
+    Output format (torch.save dict):
     {
         "patient_id": ...,
         "visit_count": N,
@@ -28,13 +29,14 @@ class Hypergraph:
             "edges": { (src_type, rel, dst_type): torch.LongTensor([[src...],[dst...]]), ... }
         }
     }
-    其中 edges 的 tensor 全部保存在 CPU 上的 int64 tensor（便于序列化/共享）。
+    All edge tensors are stored on CPU as int64 for easy serialization/sharing.
     """
 
     def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None):
         """
-        sequence_dataset: list-like of samples (如 task_dataset.samples 或 MMDataset.sequence_dataset)
-        tokenizers: dict-like 包含 keys: 'cond_hist'/'procedures'/'drugs'，并提供 batch_encode_2d 方法
+        sequence_dataset: list-like of samples (e.g., task_dataset.samples or MMDataset.sequence_dataset)
+        tokenizers: dict-like containing keys such as 'cond_hist'/'procedures'/'drugs',
+                    each exposing batch_encode_2d(...)
         """
         self.sequence_dataset = sequence_dataset
         self.note_emb_dict = note_emb_dict
@@ -47,8 +49,8 @@ class Hypergraph:
 
     def build_all_in_one(self):
         """
-        返回一个 list，每个元素是 _build_single(sample) 的结果
-        不保存到磁盘
+        Return a list where each element is _build_single(sample) output.
+        This method does not save to disk.
         """
         out = []
         for i in tqdm(range(len(self.sequence_dataset))):
@@ -59,18 +61,18 @@ class Hypergraph:
 
     def _build_single(self, sample):
         """
-        按照你之前 _build_structure/_fill_node_features 的要求构建结构并返回保存 dict。
-        sample 必须包含 keys:
+        Build the hypergraph structure and return a dict.
+        sample must contain keys:
          - 'patient_id','cond_hist','procedures','drugs','adm_time'
-         (格式与 diag_prediction_mimic3_fn 生成的 samples 保持一致)
+        The format should match samples produced by your data pipeline.
         """
-        # ---- 基本字段 ----
+        # ---- basic fields ----
         patient_id = sample["patient_id"]
         cond_hist = sample[self.feature_key_map["cond"]]      # List[List[str]]
         procedures = sample[self.feature_key_map["proc"]]    # List[List[str]]
         drugs = sample[self.feature_key_map["drug"]]              # List[List[str]]
-        adm_time_raw = sample["adm_time"]    # List[str] (原始时间字符串)
-        visit_ids = sample["visit_history"]       # 按时间顺序
+        adm_time_raw = sample["adm_time"]    # List[str] (raw time strings)
+        visit_ids = sample["visit_history"]       # ordered by time
 
         note_emb_list = []
 
@@ -78,7 +80,7 @@ class Hypergraph:
             if len(proc_tokens) == 0:
                 continue  # skip empty visit
             # print(type(visit_ids), visit_ids)
-            vid = visit_ids[v_idx]  # 对应 procedure visit
+            vid = visit_ids[v_idx]  # visit id aligned with procedures
             vid_int = int(vid)
             if vid_int in self.note_emb_dict:
                 note_emb_list.append(self.note_emb_dict[vid_int])
@@ -88,9 +90,8 @@ class Hypergraph:
         note_emb = torch.tensor(note_emb_list, dtype=torch.float32)
 
 
-        # ---- tokenization（严格使用 batch_encode_2d）----
-        # 使用你给的 tokenizer 接口名：batch_encode_2d(..., padding=False)
-        # 如果 tokenizer 的 key 不同，请在调用方传入合适的 dict
+        # ---- tokenization (use batch_encode_2d with padding=False) ----
+        # If tokenizer keys differ, pass a suitable feature_key_map.
         cond_tokens = self.tokenizers[self.feature_key_map['cond']].batch_encode_2d(cond_hist, padding=False)
         proc_tokens = self.tokenizers[self.feature_key_map['proc']].batch_encode_2d(procedures, padding=False)
         drug_tokens = self.tokenizers[self.feature_key_map['drug']].batch_encode_2d(drugs, padding=False)
@@ -98,16 +99,16 @@ class Hypergraph:
         # visit count
         num_visit = len(procedures)
 
-        # ---- 使用你的 convert_to_relative_time 计算相对时间并保存为 CPU tensor ----
+        # ---- compute relative time and store as CPU tensor ----
         try:
             rel_time = convert_to_relative_time(adm_time_raw)
         except Exception as e:
-            # 如果 convert_to_relative_time 不在当前作用域，raise 明确错误
-            raise RuntimeError("convert_to_relative_time 未找到或执行失败，请在当前作用域定义该函数") from e
+            # Fail fast if convert_to_relative_time is missing or failed.
+            raise RuntimeError("convert_to_relative_time not found or failed to run") from e
 
         rel_time_tensor = torch.tensor(rel_time, dtype=torch.float32, device='cpu')
 
-        # ---- 构建拓扑（严格照你之前的 _build_structure 实现） ----
+        # ---- build structure (aligned with your previous _build_structure logic) ----
         edges = {}
         node_num = {}
 
@@ -226,9 +227,9 @@ class Hypergraph:
 
         struct = {'node_num': node_num, 'edges': edges}
 
-        # ---- visit_node_offset: 为了兼容你希望的格式，记录每个 visit 的起始 token node index（以 type-wise flatten，保持与你的 _build_structure 对齐）
-        # 注意：在你原始实现中，每 type 的节点是单独编号（0..cond_total-1, 0..proc_total-1, ...）
-        # 这里我们提供每个 visit 在每个 type 内的 offset（便于 later 查表）
+        # visit_offsets: record per-visit start token index (type-wise flatten)
+        # Note: in the original implementation, each type has its own index space
+        # (0..cond_total-1, 0..proc_total-1, ...). These offsets help lookup later.
         def make_visit_offsets(lens):
             offsets = []
             off = 0
@@ -243,7 +244,7 @@ class Hypergraph:
             'drug': make_visit_offsets(drug_lens)
         }
 
-        # ---- 最终保存结构 ----
+        # ---- final output ----
         out = {
             "patient_id": patient_id,
             "visit_count": num_visit,
@@ -252,8 +253,8 @@ class Hypergraph:
             "proc_tokens": proc_tokens,
             "drug_tokens": drug_tokens,
 
-            "adm_time": adm_time_raw,                 # 原始字符串 list（可选）
-            "rel_adm_time": rel_time_tensor,         # 相对时间 tensor (CPU)
+            "adm_time": adm_time_raw,                 # raw time string list (optional)
+            "rel_adm_time": rel_time_tensor,         # relative time tensor (CPU)
             "note_emb": note_emb,
 
             "structure": struct,
@@ -268,7 +269,7 @@ class MMDataset(Dataset):
         self.tokenizer = tokenizer
         self.note_emb_dict = note_emb_dict
         self.device = device
-        # 离线构图：一次性构建
+        # Offline hypergraph: build once at initialization
         hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map)
         self.graph_data = hg_builder.build_all_in_one()  # list of graph dicts
 

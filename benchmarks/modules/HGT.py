@@ -44,6 +44,6 @@ class HGT(torch.nn.Module):
             x_dict = conv(x_dict, edge_index_dict, batch.edge_time_dict)
         s = get_bounds_from_slice_dict(batch)
         tmp  = get_last_visit_features_from_slices(x_dict['visit'],s)
-        all_visit_logits = self.lin(x_dict['visit'])  # 所有visit节点的logits
+        all_visit_logits = self.lin(x_dict['visit'])  # logits for all visit nodes
 
         return self.lin(tmp)

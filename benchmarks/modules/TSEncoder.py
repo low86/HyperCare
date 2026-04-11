@@ -112,7 +112,7 @@ class AddMetaPathRandomWalkSE(BaseTransform):
     def get_diagonal(self, sparse_matrix: torch_sparse.SparseTensor):
         row, col, value = sparse_matrix.coo()
         if value is None:
-            # 创建一个大小等于矩阵维度的零张量
+            # create a zero vector with size equal to the matrix dimension
             size = sparse_matrix.size(0)
             return torch.zeros(size, dtype=value.dtype if value is not None else torch.float32)
         mask = row == col

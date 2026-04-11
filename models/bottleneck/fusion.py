@@ -16,7 +16,7 @@ class BottleneckFusion(nn.Module):
         nn.init.xavier_normal_(self.bottlenecks)
         self.type_embeddings = nn.Embedding(num_modalities, dim)
         self.cross_attn = TransformerBlock(embed_dim=dim, heads=num_heads, mlp_ratio=4.0, top_k=0.7, dropout=dropout, num_layer=num_layers)
-        self.pos_embedding = nn.Parameter(torch.empty(1, 256, dim))  # 预留足够长度
+        self.pos_embedding = nn.Parameter(torch.empty(1, 256, dim))  # reserve sufficient length
         nn.init.trunc_normal_(self.pos_embedding, std=0.02)
 
     def forward(self, modality_list):
@@ -36,3 +36,4 @@ class BottleneckFusion(nn.Module):
         output = self.cross_attn(combined + pos_emb)
         return output[:, :self.num_tokens, :]
     
+
