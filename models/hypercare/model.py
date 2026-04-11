@@ -3,20 +3,13 @@
 # Online Hypergraph Generator Version #
 ######################################
 
-from random import random
-import sys
-import math
 import torch
 from core.utils import *
 import torch.nn as nn
-from torchdiffeq import odeint
 from models.bottleneck import *
 from torch_geometric.nn import Linear
 
 from torch_geometric.data import Batch
-from torch_geometric.data import HeteroData
-from benchmarks.modules.TSEncoder import Time2Vec
-# from models.HyperEncoder import HypergraphEncoder
 from benchmarks.modules.Seqmodels import TransformerLayer
 from torch_scatter import scatter_add, scatter_mean, scatter_softmax, scatter_sum, scatter_max
 from models.hypercare.online_encoder import HypergraphEncoder
@@ -516,8 +509,8 @@ class HypergraphModel(nn.Module):
         # --- Prediction ---
         graph_out = self.fc_graph(last_time_embeds)  # [B, output_dim]
         # --- Fusion ---
-        fused_out = self.alpha * graph_out + (1 - self.alpha) * seq_logits
-        # fused_out = graph_out
+        # fused_out = self.alpha * graph_out + (1 - self.alpha) * seq_logits
+        fused_out = graph_out
 
         if self.writer is not None and self.training:
             self.writer.add_scalar('Parameters/alpha', self.alpha.item(), self.global_step)
