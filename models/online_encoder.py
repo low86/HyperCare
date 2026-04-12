@@ -46,7 +46,7 @@ class HypergraphEncoder(nn.Module):
         )
         self.time2vec = Time2Vec(time_dim).to(self.device)
         self.global_type_emb = nn.Embedding(3, self.node_emb_dim).to(self.device)
-        self.note_projection = nn.Linear(self.time_dim + 768, 256).to(self.device)
+        self.note_projection = nn.Linear(768, 256).to(self.device)
 
     def _unique_token_ids(self, tokens_2d):
         # tokens_2d: list of lists (may include empty lists)
