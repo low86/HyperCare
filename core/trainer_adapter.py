@@ -158,7 +158,7 @@ class SimpleTrainer:
                 # Only print test metrics periodically
                 _, _, test_loader = self.spec.dataloaders
                 _, test_metrics = self._run_epoch(
-                    test_loader, model, optimizer=None, train=False, do_metrics=True
+                    test_loader, model, optimizer=None, train=False, do_metrics=True, compute_loss=False
                 )
                 self._print_test_epoch(epoch, test_metrics)
 
@@ -171,10 +171,10 @@ class SimpleTrainer:
         if ckpt_path and os.path.exists(ckpt_path):
             model.load_state_dict(torch.load(ckpt_path, map_location=self.device))
         model = self._prepare_model(model)
-        test_loss, test_metrics = self._run_epoch(
-            test_loader, model, optimizer=None, train=False, do_metrics=True
+        _, test_metrics = self._run_epoch(
+            test_loader, model, optimizer=None, train=False, do_metrics=True, compute_loss=False
         )
-        return test_loss, test_metrics
+        return None, test_metrics
 
     def _run_epoch(
         self,
@@ -183,6 +183,7 @@ class SimpleTrainer:
         optimizer: Optional[torch.optim.Optimizer],
         train: bool,
         do_metrics: bool,
+        compute_loss: bool = True,
     ) -> Tuple[float, Optional[dict]]:
         loss_sum = 0.0
         y_true_all = []
@@ -195,18 +196,23 @@ class SimpleTrainer:
 
             logits, model_loss, y_prob = self.adapter.forward(model, batch)
             labels = self.adapter.labels_from_batch(batch)
-            if model_loss is not None:
-                loss = model_loss
-            else:
-                if logits is None:
-                    raise ValueError("Model did not return logits or loss; cannot compute loss.")
-                loss = self.adapter.loss(logits, labels)
+            loss = None
+            if compute_loss:
+                if model_loss is not None:
+                    loss = model_loss
+                else:
+                    if logits is None:
+                        raise ValueError("Model did not return logits or loss; cannot compute loss.")
+                    loss = self.adapter.loss(logits, labels)
 
             if train:
+                if loss is None:
+                    raise ValueError("Loss is required for training but was not computed.")
                 loss.backward()
                 optimizer.step()
 
-            loss_sum += float(loss.detach().cpu().item())
+            if compute_loss and loss is not None:
+                loss_sum += float(loss.detach().cpu().item())
 
             if do_metrics:
                 y_true_all.append(labels.detach().cpu().numpy())
@@ -217,7 +223,7 @@ class SimpleTrainer:
                         raise ValueError("Model did not return logits or y_prob; cannot compute metrics.")
                     y_prob_all.append(torch.sigmoid(logits).detach().cpu().numpy())
 
-        avg_loss = loss_sum / max(1, len(data_loader))
+        avg_loss = loss_sum / max(1, len(data_loader)) if compute_loss else 0.0
         metrics = None
         if do_metrics and y_true_all:
             y_true = np.concatenate(y_true_all, axis=0)

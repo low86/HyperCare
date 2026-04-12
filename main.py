@@ -47,6 +47,7 @@ def parse_args():
     parser.add_argument("--gamma_time", type=float, default=0.8,help="initial gamma_time")
     parser.add_argument("--tau_time", type=float, default=4.0, help="initial tau_time in days")
     parser.add_argument("--note_emb_path", type=str, default="")
+    parser.add_argument("--node_emb_path", type=str, default="./logs/node_emb_dict.npy")
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["none", "cosine"])
     parser.add_argument("--t_max", type=int, default=40,
         help="CosineAnnealingLR period (in epochs); set to epochs for a full cycle",
@@ -110,7 +111,8 @@ def main():
         flush=True,
     )
     print(f"[main] dataloaders ready, device={device}", flush=True)
-    print(f"[main] test_loss={test_loss:.4f}", flush=True)
+    if test_loss is not None:
+        print(f"[main] test_loss={test_loss:.4f}", flush=True)
     if test_metrics:
         print(f"[main] test_metrics={test_metrics}", flush=True)
 

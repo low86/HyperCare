@@ -16,7 +16,7 @@ from benchmarks.modules.TRANS import TRANS, graph_meta
 from core.utils import get_parent_tokenizers
 from torch.nn.utils.rnn import pack_padded_sequence, unpack_sequence
 from pyhealth.medcode import InnerMap
-from models.hypercare.model import HypergraphModel
+from models.model import HypergraphModel
 
 # -------------------------------------------#
 # Transformer #
@@ -408,6 +408,7 @@ def build_model(model_name, task_dataset, tokenizers, device, args):
             tau_time=args.tau_time,
             device=device,
             feature_key_map={"cond": "cond_hist", "proc": "procedures", "drug": "drugs"},
+            node_emb_path=getattr(args, "node_emb_path", ""),
         )
 
     if model_name == "Transformer":

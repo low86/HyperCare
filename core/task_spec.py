@@ -13,7 +13,7 @@ from pyhealth.tokenizer import Tokenizer
 
 from core.registry import TASK_SPECS
 from benchmarks.modules.trans_dataset import MMDataset as TransMMDataset
-from models.hypercare.offline import MMDataset as HyperCareDataset
+from models.offline import MMDataset as HyperCareDataset
 from core.utils import (
     get_init_tokenizers,
     get_label_tokenizer,
