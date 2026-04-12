@@ -3,7 +3,7 @@
 ![Pipeline](source/pipeline.jpg)
 
 ## Overview
-HyperCare is a longitudinal heterogeneous hypergraph neural network designed to model patient health trajectories from multimodal EHRs. It further integrates LLM-derived multimodal semantics and population-level progression patterns, then uses guided hypergraph message passing to capture subtle risk signals and clinically meaningful longitudinal health dynamics.
+HyperCare is a longitudinal heterogeneous hypergraph neural network for modeling patient health trajectories from multimodal EHRs. It integrates guided hypergraph message passing to capture subtle risk signals and clinically meaningful longitudinal health dynamics.
 
 ## Repository Structure
 - `benchmarks/` Baseline models and task wrappers.
