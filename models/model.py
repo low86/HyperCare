@@ -30,6 +30,8 @@ class Node2TimeAggregator(nn.Module):
         self.tau_time = nn.Parameter(torch.tensor(tau_time))
         self.layernorm = nn.LayerNorm(hidden_dim)
         self.alpha = nn.Parameter(torch.tensor(1.0))
+        # Optional guidance bias callable: fn(q, u, data, edge_index) -> bias per-edge
+        self.guidance_fn = None
 
         if mode == 'attention':
             assert hidden_dim % num_heads == 0, "hidden_dim must be divisible by num_heads"
@@ -49,7 +51,6 @@ class Node2TimeAggregator(nn.Module):
     def _compute_time_factor(self, visit_times, dst, batch_idx):
         t_dst = visit_times[dst]  # [E]
         dst_batch = batch_idx[dst]  # [E]
-
         # last visit time per batch
         t_last_per_batch, _ = scatter_max(visit_times, batch_idx, dim=0)  # [B]
         t_last_edges = t_last_per_batch[dst_batch]  # [E]
@@ -61,6 +62,13 @@ class Node2TimeAggregator(nn.Module):
         tau_pos = F.softplus(self.tau_time)
         factor = 1.0 + gamma_pos * torch.exp(- delta_log / (tau_pos + 1e-6))
         return factor.unsqueeze(-1)  # [E,1]
+
+    def set_guidance_fn(self, fn):
+        """
+        Set optional guidance bias function.
+        Expected signature: fn(q, u, data, edge_index) -> bias with shape [E, H] or [E, 1] or [E]
+        """
+        self.guidance_fn = fn
 
     def forward(self, data, node_types=['cond', 'proc', 'drug']):
         device = data['time_hyperedge'].x.device
@@ -103,6 +111,12 @@ class Node2TimeAggregator(nn.Module):
                 # base attention
                 att_score = (q * k).sum(-1) / (self.head_dim ** 0.5)
                 att_score = self.leakyrelu(att_score)
+                if self.guidance_fn is not None:
+                    bias = self.guidance_fn(q, k, data, edge_index)
+                    if bias is not None:
+                        if bias.dim() == 1:
+                            bias = bias.unsqueeze(-1)
+                        att_score = att_score + bias
                 batch_idx = data['time_hyperedge'].batch
                 visit_times = data['time_hyperedge'].adm_time  # [num_visits]
                 time_factor_h = self._compute_time_factor(visit_times, dst, batch_idx)
