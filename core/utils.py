@@ -6,7 +6,7 @@ from datetime import datetime
 from pyhealth.tokenizer import Tokenizer
 from pyhealth.datasets import  MIMIC4Dataset, MIMIC3Dataset
 import torch.nn.functional as F
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, Subset
 from pyhealth.datasets import split_by_patient, get_dataloader
 from pyhealth.medcode import InnerMap
 
@@ -123,6 +123,52 @@ def split_dataset(dataset, train_ratio=0.75, valid_ratio=0.1, test_ratio=0.15):
     return train_set, valid_set, test_set
 
 
+def split_mm_dataset_by_patient(dataset, split_ratio=(0.75, 0.1, 0.15)):
+    """Split MM dataset by patient_id to avoid cross-split patient leakage.
+
+    This helper is kept as an optional strict-evaluation split strategy.
+    """
+    train_ratio, valid_ratio, test_ratio = split_ratio
+    total = train_ratio + valid_ratio + test_ratio
+    if abs(total - 1.0) > 1e-8:
+        raise ValueError("Ratios must sum to 1.")
+
+    patient_to_indices = {}
+    for idx in range(len(dataset)):
+        sequence_data, _ = dataset[idx]
+        patient_id = sequence_data["patient_id"]
+        patient_to_indices.setdefault(patient_id, []).append(idx)
+
+    patient_ids = np.array(list(patient_to_indices.keys()))
+    if len(patient_ids) == 0:
+        empty = Subset(dataset, [])
+        return empty, empty, empty
+
+    shuffled = np.random.permutation(patient_ids)
+    n_patients = len(shuffled)
+    n_train = int(n_patients * train_ratio)
+    n_valid = int(n_patients * valid_ratio)
+    n_test = n_patients - n_train - n_valid
+
+    train_patients = set(shuffled[:n_train].tolist())
+    valid_patients = set(shuffled[n_train:n_train + n_valid].tolist())
+    test_patients = set(shuffled[n_train + n_valid:n_train + n_valid + n_test].tolist())
+
+    train_indices, valid_indices, test_indices = [], [], []
+    for pid, indices in patient_to_indices.items():
+        if pid in train_patients:
+            train_indices.extend(indices)
+        elif pid in valid_patients:
+            valid_indices.extend(indices)
+        elif pid in test_patients:
+            test_indices.extend(indices)
+
+    train_set = Subset(dataset, train_indices)
+    valid_set = Subset(dataset, valid_indices)
+    test_set = Subset(dataset, test_indices)
+    return train_set, valid_set, test_set
+
+
 def custom_collate_fn(batch):
     sequence_data_list = [item[0] for item in batch]
     graph_data_list = [item[1] for item in batch]
@@ -136,18 +182,10 @@ def custom_collate_fn(batch):
 
 def mm_dataloader(trainset, validset, testset, batch_size = 64):
     train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    val_loader = DataLoader(validset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
+    val_loader = DataLoader(validset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
  
     return train_loader, val_loader, test_loader 
-
-def custom_collate_fn_seq(batch):
-  
-    sequence_data_batch = {
-        key: [d[key] for d in batch if d[key] != []]
-        for key in batch[0]
-    }
-    return sequence_data_batch
 
 
 def seq_dataloader(dataset, split_ratio = [0.75, 0.1, 0.15], batch_size = 64):
