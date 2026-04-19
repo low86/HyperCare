@@ -155,11 +155,24 @@ class SimpleTrainer:
                 torch.save(model.state_dict(), ckpt_path)
 
             if self.args.eval_every > 0 and epoch % self.args.eval_every == 0:
-                # Only print test metrics periodically
+                # Periodic test uses current best checkpoint for consistency,
+                # then restores the in-training weights.
                 _, _, test_loader = self.spec.dataloaders
-                _, test_metrics = self._run_epoch(
-                    test_loader, model, optimizer=None, train=False, do_metrics=True, compute_loss=False
-                )
+                test_metrics = None
+                if ckpt_path and os.path.exists(ckpt_path):
+                    current_state = {
+                        k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+                    }
+                    best_state = torch.load(ckpt_path, map_location=self.device)
+                    model.load_state_dict(best_state)
+                    _, test_metrics = self._run_epoch(
+                        test_loader, model, optimizer=None, train=False, do_metrics=True, compute_loss=False
+                    )
+                    model.load_state_dict(current_state)
+                else:
+                    _, test_metrics = self._run_epoch(
+                        test_loader, model, optimizer=None, train=False, do_metrics=True, compute_loss=False
+                    )
                 self._print_test_epoch(epoch, test_metrics)
 
         return ckpt_path
