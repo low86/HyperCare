@@ -23,7 +23,7 @@ def parse_args():
 
     parser.add_argument("--task", type=str, default="drug", choices=["diag", "drug"])
     parser.add_argument("--model", type=str, default="HyperCare")
-    parser.add_argument("--dataset", type=str, default="mimic3", choices=["mimic3", "mimic4", "ccae"])
+    parser.add_argument("--dataset", type=str, default="mimic3", choices=["mimic3", "mimic4"])
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--dev", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
@@ -65,12 +65,10 @@ def set_seed(seed: int):
 def resolve_data_root(args):
     if args.data_root:
         return args.data_root
-    fileroot = {
-        "mimic3": r"C:\Users\pc\Desktop\code\baseline\mimic3\hosp",
-        "mimic4": r"C:\Users\pc\Desktop\code\baseline\mimic4\hosp",
-        "ccae": r"./data/processed_dip.pkl",
-    }
-    return fileroot[args.dataset]
+    raise ValueError(
+        "--data_root is required. For example: "
+        "--data_root <PATH_TO_MIMIC3_HOSP> or --data_root <PATH_TO_MIMIC4_HOSP>."
+    )
 
 
 def main():
@@ -80,7 +78,6 @@ def main():
         note_emb_root = {
             "mimic3": "./logs/mimic3_emb_dict.npy",
             "mimic4": "./logs/mimic4_emb_dict.npy",
-            "ccae": "./logs/ccae_emb_dict.npy",
         }
         args.note_emb_path = note_emb_root.get(args.dataset, "./logs/mimic3_emb_dict.npy")
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
