@@ -24,13 +24,13 @@ HyperCare is a longitudinal heterogeneous hypergraph neural network for modeling
 | Drug recommendation | `mimic3`, `mimic4` | `HyperCare`, `Transformer`, `RETAIN`, `StageNet`, `Deepr`, `AdaCare`, `ConCare`, `GRASP`, `DrAgent`, `SafeDrug`, `GAMENet`, `MICRON`, `MoleRec`, `TRANS` |
 
 ## Datasets
-HyperCare is evaluated on MIMIC-III and MIMIC-IV. Structured EHR records are loaded with PyHealth from the corresponding hospital module directories.
+HyperCare uses structured EHR records from MIMIC-III and MIMIC-IV through PyHealth.
 
-Clinical notes are used only to generate local summary embeddings:
+Unstructured EHR notes are used only for local summary embeddings:
 - MIMIC-IV notes: `discharge.csv` from MIMIC-IV.
 - MIMIC-III notes: `NOTEEVENTS.csv` from MIMIC-III.
 
-The repository does not redistribute MIMIC notes, generated clinical summaries, or note embeddings. Users must obtain authorized access to the MIMIC datasets through PhysioNet and generate these artifacts locally.
+MIMIC data and generated artifacts are not included in this repository.
 
 ## Quick Start
 
