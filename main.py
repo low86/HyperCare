@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--eval_every", type=int, default=5)
-    parser.add_argument("--output_dir", type=str, default="./logs")
+    parser.add_argument("--output_dir", type=str, default="./results")
     parser.add_argument("--show_progress", type=bool, default=True)
 
     #TRANS specific args
@@ -77,10 +77,10 @@ def main():
     args.data_root = resolve_data_root(args)
     if args.model == "HyperCare" and not args.note_emb_path:
         note_emb_root = {
-            "mimic3": "./logs/mimic3_note_emb.npy",
-            "mimic4": "./logs/mimic4_note_emb.npy",
+            "mimic3": "./results/mimic3_note_emb.npy",
+            "mimic4": "./results/mimic4_note_emb.npy",
         }
-        args.note_emb_path = note_emb_root.get(args.dataset, "./logs/mimic3_note_emb.npy")
+        args.note_emb_path = note_emb_root.get(args.dataset, "./results/mimic3_note_emb.npy")
     if args.model == "HyperCare" and not args.node_emb_path:
         args.node_emb_path = os.path.join(
             args.output_dir,

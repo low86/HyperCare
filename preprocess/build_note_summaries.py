@@ -319,7 +319,7 @@ def parse_args():
 def main():
     args = parse_args()
     if args.output_jsonl is None:
-        args.output_jsonl = f"./logs/{args.dataset}_note_summaries.jsonl"
+        args.output_jsonl = f"./results/{args.dataset}_note_summaries.jsonl"
     os.makedirs(os.path.dirname(args.output_jsonl) or ".", exist_ok=True)
 
     target_hadm_ids = None

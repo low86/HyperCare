@@ -27,7 +27,7 @@ HyperCare is a longitudinal heterogeneous hypergraph neural network for modeling
 HyperCare is evaluated on MIMIC-III and MIMIC-IV. Structured EHR records are loaded with PyHealth from the corresponding hospital module directories.
 
 Clinical notes are used only to generate local summary embeddings:
-- MIMIC-IV notes: `discharge.csv` from MIMIC-IV-Note.
+- MIMIC-IV notes: `discharge.csv` from MIMIC-IV.
 - MIMIC-III notes: `NOTEEVENTS.csv` from MIMIC-III.
 
 The repository does not redistribute MIMIC notes, generated clinical summaries, or note embeddings. Users must obtain authorized access to the MIMIC datasets through PhysioNet and generate these artifacts locally.
@@ -96,7 +96,7 @@ python preprocess/build_note_summaries.py \
   --task drug \
   --data_root <PATH_TO_MIMIC4_HOSP> \
   --note_csv <PATH_TO_MIMIC_IV_NOTE>/discharge.csv \
-  --output_jsonl ./logs/mimic4_note_summaries.jsonl \
+  --output_jsonl ./results/mimic4_note_summaries.jsonl \
   --api_base http://127.0.0.1:8000/v1 \
   --model Qwen/Qwen2.5-7B-Instruct \
   --resume
@@ -107,8 +107,8 @@ Encode summaries into `note_emb_path`:
 ```bash
 python preprocess/embed_note_summaries.py \
   --dataset mimic4 \
-  --summary_jsonl ./logs/mimic4_note_summaries.jsonl \
-  --output_npy ./logs/mimic4_note_emb.npy \
+  --summary_jsonl ./results/mimic4_note_summaries.jsonl \
+  --output_npy ./results/mimic4_note_emb.npy \
   --encoder bioclinicalbert \
   --resume
 ```
@@ -121,8 +121,8 @@ python preprocess/build_node_embeddings.py \
   --task drug \
   --dataset mimic4 \
   --data_root <PATH_TO_MIMIC4_HOSP> \
-  --description_jsonl ./logs/drug_mimic4_node_descriptions.jsonl \
-  --output_npy ./logs/drug_mimic4_node_emb.npy \
+  --description_jsonl ./results/drug_mimic4_node_descriptions.jsonl \
+  --output_npy ./results/drug_mimic4_node_emb.npy \
   --api_base http://127.0.0.1:8000/v1 \
   --llm_model Qwen/Qwen2.5-7B-Instruct \
   --encoder bioclinicalbert \
@@ -137,9 +137,9 @@ python main.py \
   --dataset mimic3 \
   --model HyperCare \
   --data_root <PATH_TO_MIMIC3_HOSP> \
-  --note_emb_path ./logs/mimic3_note_emb.npy \
+  --note_emb_path ./results/mimic3_note_emb.npy \
   --note_emb_dim <NOTE_EMB_DIM> \
-  --node_emb_path ./logs/drug_mimic3_node_emb.npy
+  --node_emb_path ./results/drug_mimic3_node_emb.npy
 ```
 
 Set `<NOTE_EMB_DIM>` to the note encoder output dimension: `clinical-longformer` = 768, `bioclinicalbert` = 768, `bge-m3` = 1024. Supported encoder presets are `clinical-longformer`, `bioclinicalbert`, and `bge-m3`.
@@ -156,6 +156,15 @@ Key versions:
 - torch-sparse 0.6.18
 - PyHealth 1.1.6
 
-## Reproducibility
-- Set `--seed` for deterministic training.
-- Use the same dataset split and cache files for fair comparison.
+## <img src="source/happy.jpg" alt="happy" width="24"> Citation
+```bibtex
+@inproceedings{hypercare2026,
+  title     = {HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction},
+  author    = {TBD},
+  booktitle = {Proceedings of the ACM International Conference on Multimedia},
+  year      = {2026}
+}
+```
+
+## Contact
+For questions, contact tianyuxuan@std.uestc.edu.cn.

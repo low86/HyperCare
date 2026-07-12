@@ -210,9 +210,9 @@ def parse_args():
 def main():
     args = parse_args()
     if args.description_jsonl is None:
-        args.description_jsonl = f"./logs/{args.task}_{args.dataset}_node_descriptions.jsonl"
+        args.description_jsonl = f"./results/{args.task}_{args.dataset}_node_descriptions.jsonl"
     if args.output_npy is None:
-        args.output_npy = f"./logs/{args.task}_{args.dataset}_node_emb.npy"
+        args.output_npy = f"./results/{args.task}_{args.dataset}_node_emb.npy"
     os.makedirs(os.path.dirname(args.description_jsonl) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(args.output_npy) or ".", exist_ok=True)
 

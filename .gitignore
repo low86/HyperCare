@@ -13,6 +13,7 @@
 
 # 目录
 logs/
+results/
 data/
 .vscode/
 __pycache__/

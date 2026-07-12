@@ -255,7 +255,7 @@ def parse_args():
     parser.add_argument("--task", required=True, choices=["diag", "drug"])
     parser.add_argument("--dataset", required=True, choices=["mimic3", "mimic4"])
     parser.add_argument("--data_root", required=True)
-    parser.add_argument("--output_path", default="./logs/population_priors.pt")
+    parser.add_argument("--output_path", default="./results/population_priors.pt")
     parser.add_argument("--topk", type=int, default=32)
     parser.add_argument("--cohort", choices=["train", "all"], default="train")
     parser.add_argument("--train_ratio", type=float, default=0.75)

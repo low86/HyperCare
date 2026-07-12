@@ -104,9 +104,9 @@ def main():
     args = parse_args()
     if args.output_npy is None:
         if args.dataset:
-            args.output_npy = f"./logs/{args.dataset}_note_emb.npy"
+            args.output_npy = f"./results/{args.dataset}_note_emb.npy"
         else:
-            args.output_npy = "./logs/note_emb_dict.npy"
+            args.output_npy = "./results/note_emb_dict.npy"
     os.makedirs(os.path.dirname(args.output_npy) or ".", exist_ok=True)
 
     model_name = MODEL_PRESETS.get(args.encoder, args.encoder)
