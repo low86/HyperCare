@@ -156,7 +156,7 @@ Key versions:
 - torch-sparse 0.6.18
 - PyHealth 1.1.6
 
-## <img src="source/happy.jpg" alt="happy" width="24"> Citation
+<h2><img src="source/happy.jpg" alt="happy" width="24" style="vertical-align: middle;"> Citation</h2>
 ```bibtex
 @inproceedings{hypercare2026,
   title     = {HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction},
