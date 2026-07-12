@@ -1,8 +1,8 @@
-﻿# HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction
+﻿# [MM'2026] HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction
 
 [![ACM MM 2026](https://img.shields.io/badge/ACM%20MM-2026-blue)](#)
 
-This repository contains the official implementation of **HyperCare**, accepted by **ACM Multimedia 2026 (ACM MM 2026)**.
+This repository contains the official implementation of **HyperCare**, accepted by **ACM Multimedia 2026**.
 
 ![Pipeline](source/pipeline.jpg)
 
@@ -10,10 +10,11 @@ This repository contains the official implementation of **HyperCare**, accepted 
 HyperCare is a longitudinal heterogeneous hypergraph neural network for modeling patient health trajectories from multimodal EHRs. It integrates guided hypergraph message passing to capture subtle risk signals and clinically meaningful longitudinal health dynamics.
 
 ## Repository Structure
-- `benchmarks/` Baseline models and task wrappers.
-- `core/` Training loop, task specs, and utilities.
-- `models/` HyperCare model, encoder, and offline graph construction.
-- `logs/` Training outputs and cached artifacts.
+- `benchmarks/` Task definitions, metrics, and baseline models.
+- `core/` Dataset loading, task specs, model factory, and trainer adapter.
+- `models/` HyperCare model, online encoder, and offline hypergraph construction.
+- `preprocess/` Scripts for LLM-enhanced note/code embeddings and auxiliary preprocessing.
+- `source/` Figures and static assets.
 
 ## Supported Tasks and Models
 
@@ -48,9 +49,7 @@ python main.py \
   --task diag \
   --dataset mimic3 \
   --model HyperCare \
-  --data_root <PATH_TO_MIMIC3_HOSP> \
-  --note_emb_path <PATH_TO_NOTE_EMB_NPY> \
-  --node_emb_path <PATH_TO_NODE_EMB_NPY>
+  --data_root <PATH_TO_MIMIC3_HOSP>
 ```
 
 ### 2) Drug recommendation
@@ -59,9 +58,7 @@ python main.py \
   --task drug \
   --dataset mimic3 \
   --model HyperCare \
-  --data_root <PATH_TO_MIMIC3_HOSP> \
-  --note_emb_path <PATH_TO_NOTE_EMB_NPY> \
-  --node_emb_path <PATH_TO_NODE_EMB_NPY>
+  --data_root <PATH_TO_MIMIC3_HOSP>
 ```
 
 ### 3) Run a baseline (example)
@@ -75,19 +72,14 @@ python main.py \
 
 ## Notes
 - `data_root` is required. Use the path to the corresponding MIMIC-III or MIMIC-IV hospital module directory.
-- `note_emb_path` is required for HyperCare. It should point to the offline note embedding file (e.g., `note_emb_dict.npy`).
-- `node_emb_path` is optional. If provided, code embeddings are initialized from semantic vectors (e.g., 768-dim). If not provided, embeddings are randomly initialized.
+- HyperCare can run without LLM-generated embeddings.
+- If `note_emb_path` is omitted or missing, zero note embeddings are used.
+- If `node_emb_path` is omitted or missing, code embeddings are randomly initialized.
+- When note embeddings are provided, set `note_emb_dim` to the encoder output dimension: `clinical-longformer` = 768, `bioclinicalbert` = 768, `bge-m3` = 1024.
 
-## Clinical Note Summaries
-The note pipeline is optional and produces the `note_emb_path` artifact used by HyperCare. It has two steps: summarize selected discharge-note sections with Qwen2.5, then encode each summary with a clinical/text encoder.
+## LLM-Enhanced Embeddings
 
-Install optional note-processing dependencies:
-
-```bash
-pip install -r requirements-notes.txt
-```
-
-Run a Qwen2.5 OpenAI-compatible server separately, for example on `http://127.0.0.1:8000/v1`. One common setup is:
+Start a Qwen2.5 OpenAI-compatible vLLM server:
 
 ```bash
 vllm serve Qwen/Qwen2.5-7B-Instruct \
@@ -95,11 +87,14 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
   --port 8000
 ```
 
-Then generate summaries:
+### Clinical Note Summaries
+Generate summaries for admissions used by the selected task:
 
 ```bash
-python preprocess/notes/build_note_summaries.py \
+python preprocess/build_note_summaries.py \
   --dataset mimic4 \
+  --task drug \
+  --data_root <PATH_TO_MIMIC4_HOSP> \
   --note_csv <PATH_TO_MIMIC_IV_NOTE>/discharge.csv \
   --output_jsonl ./logs/mimic4_note_summaries.jsonl \
   --api_base http://127.0.0.1:8000/v1 \
@@ -107,44 +102,47 @@ python preprocess/notes/build_note_summaries.py \
   --resume
 ```
 
-For MIMIC-III, use `--dataset mimic3` and `--note_csv <PATH_TO_MIMIC_III>/NOTEEVENTS.csv`.
-
-The summary script extracts these sections when available:
-- Chief Complaint
-- Past Medical History
-- Discharge Condition
-- Discharge Diagnosis
-- Brief Hospital Course
-- Discharge Medications
-
-Encode summaries into a `{hadm_id: embedding}` `.npy` dictionary:
+Encode summaries into `note_emb_path`:
 
 ```bash
-python preprocess/notes/embed_note_summaries.py \
+python preprocess/embed_note_summaries.py \
+  --dataset mimic4 \
   --summary_jsonl ./logs/mimic4_note_summaries.jsonl \
-  --output_npy ./logs/mimic4_emb_dict.npy \
+  --output_npy ./logs/mimic4_note_emb.npy \
   --encoder bioclinicalbert \
   --resume
 ```
 
-Supported encoder presets are `clinical-longformer`, `bioclinicalbert`, `bge-m3`, and `jina-v3`. You can also pass a local Hugging Face model path or model ID through `--encoder`. The script uses the `[CLS]` representation directly.
-
-## Population-Level Priors
-Population-level priors can be generated from the structured EHR trajectories without using clinical notes. The script builds two kinds of priors for each clinical type (`cond`, `proc`, `drug`):
-- Co-occurrence priors: patient-level co-occurrence matrix, Jaccard top-k graph, frequency, centrality, and specificity.
-- Temporal progression priors: visit-ordered directional transition scores with temporal decay.
-
-Example:
+### Semantic Code Embeddings
+Generate `node_emb_path` from CCS/ATC code descriptions:
 
 ```bash
-python preprocess/build_population_priors.py \
-  --task diag \
-  --dataset mimic3 \
-  --data_root <PATH_TO_MIMIC3_HOSP> \
-  --output_path ./logs/diag_mimic3_population_priors.pt
+python preprocess/build_node_embeddings.py \
+  --task drug \
+  --dataset mimic4 \
+  --data_root <PATH_TO_MIMIC4_HOSP> \
+  --description_jsonl ./logs/drug_mimic4_node_descriptions.jsonl \
+  --output_npy ./logs/drug_mimic4_node_emb.npy \
+  --api_base http://127.0.0.1:8000/v1 \
+  --llm_model Qwen/Qwen2.5-7B-Instruct \
+  --encoder bioclinicalbert \
+  --resume
 ```
 
-The saved artifact is a PyTorch dictionary with `metadata` and one entry per clinical type. Dense scores and sparse top-k tensors are both included so downstream guidance modules can choose the most convenient representation.
+Use generated embeddings in training:
+
+```bash
+python main.py \
+  --task drug \
+  --dataset mimic3 \
+  --model HyperCare \
+  --data_root <PATH_TO_MIMIC3_HOSP> \
+  --note_emb_path ./logs/mimic3_note_emb.npy \
+  --note_emb_dim <NOTE_EMB_DIM> \
+  --node_emb_path ./logs/drug_mimic3_node_emb.npy
+```
+
+Set `<NOTE_EMB_DIM>` to the note encoder output dimension: `clinical-longformer` = 768, `bioclinicalbert` = 768, `bge-m3` = 1024. Supported encoder presets are `clinical-longformer`, `bioclinicalbert`, and `bge-m3`.
 
 ## Environment
 The recommended environment is provided in `environment.yml`.

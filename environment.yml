@@ -24,3 +24,7 @@ dependencies:
       - torch-scatter==2.1.2
       - torch-sparse==0.6.18
       - pyhealth==1.1.6
+      - transformers==4.43.4
+      - accelerate==1.14.0
+      - safetensors==0.7.0
+      - huggingface_hub==0.36.2

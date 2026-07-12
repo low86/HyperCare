@@ -282,7 +282,7 @@ class HypergraphLayer(nn.Module):
 
 
 class HypergraphModel(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, time_dim, output_dim, num_heads, num_layers, gamma_time, tau_time, device='cuda', feature_key_map: dict | None = None, node_emb_path: str | None = None):
+    def __init__(self, tokenizer, hidden_dim, time_dim, output_dim, num_heads, num_layers, gamma_time, tau_time, device='cuda', feature_key_map: dict | None = None, node_emb_path: str | None = None, note_emb_dim: int = 768):
         super().__init__()
         self.device = torch.device(device)
         self.encoder = HypergraphEncoder(
@@ -292,6 +292,7 @@ class HypergraphModel(nn.Module):
             device=self.device,
             feature_key_map=feature_key_map,
             node_emb_path=node_emb_path,
+            note_emb_dim=note_emb_dim,
         )
         self.layer = HypergraphLayer(hidden_dim, output_dim, time_dim, num_heads, gamma_time, tau_time)
         self.to(self.device)

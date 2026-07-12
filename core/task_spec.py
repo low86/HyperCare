@@ -58,8 +58,6 @@ class TaskSpec:
         )
 
         if args.model == "HyperCare":
-            if not os.path.exists(args.note_emb_path):
-                raise FileNotFoundError(f"note_emb_path not found: {args.note_emb_path}")
             if args.task == "diag":
                 feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
             elif args.task == "drug":
@@ -68,13 +66,25 @@ class TaskSpec:
                 raise ValueError(f"HyperCare does not support task: {args.task}")
 
             os.makedirs(args.output_dir, exist_ok=True)
+            note_cache_tag = "note"
+            if not args.note_emb_path or not os.path.exists(args.note_emb_path):
+                note_cache_tag = "nonote"
             cache_path = os.path.join(
-                args.output_dir, f"{args.task}_{args.dataset}_hypercare_t{args.time_dim}.pt"
+                args.output_dir,
+                f"{args.task}_{args.dataset}_hypercare_t{args.time_dim}_n{args.note_emb_dim}_{note_cache_tag}.pt",
             )
             if os.path.exists(cache_path):
                 mdataset = load(cache_path)
             else:
-                note_emb_dict = np.load(args.note_emb_path, allow_pickle=True).item()
+                if args.note_emb_path and os.path.exists(args.note_emb_path):
+                    note_emb_dict = np.load(args.note_emb_path, allow_pickle=True).item()
+                else:
+                    note_emb_dict = {}
+                    print(
+                        "[HyperCare] note_emb_path not found or not provided; "
+                        "using zero note embeddings.",
+                        flush=True,
+                    )
                 mdataset = HyperCareDataset(
                     task_dataset,
                     tokenizers,
@@ -82,6 +92,7 @@ class TaskSpec:
                     device="cpu",
                     feature_key_map=feature_key_map,
                     time_dim=args.time_dim,
+                    note_emb_dim=args.note_emb_dim,
                 )
                 dump(mdataset, cache_path)
             trainset, validset, testset = split_dataset(mdataset)

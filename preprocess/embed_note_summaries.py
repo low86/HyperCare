@@ -12,7 +12,12 @@ MODEL_PRESETS = {
     "clinical-longformer": "yikuan8/Clinical-Longformer",
     "bioclinicalbert": "emilyalsentzer/Bio_ClinicalBERT",
     "bge-m3": "BAAI/bge-m3",
-    "jina-v3": "jinaai/jina-embeddings-v3",
+}
+
+EMBEDDING_DIMS = {
+    "clinical-longformer": 768,
+    "bioclinicalbert": 768,
+    "bge-m3": 1024,
 }
 
 
@@ -77,12 +82,13 @@ class SummaryEncoder:
 def parse_args():
     parser = argparse.ArgumentParser(description="Encode clinical note summaries into visit embeddings.")
     parser.add_argument("--summary_jsonl", required=True)
-    parser.add_argument("--output_npy", default="./logs/note_emb_dict.npy")
+    parser.add_argument("--dataset", choices=["mimic3", "mimic4"], default=None)
+    parser.add_argument("--output_npy", default=None)
     parser.add_argument(
         "--encoder",
         default="bioclinicalbert",
         help="Preset name or Hugging Face model/path. Presets: "
-        + ", ".join(sorted(MODEL_PRESETS)),
+        + ", ".join(f"{k} ({EMBEDDING_DIMS[k]}d)" for k in sorted(MODEL_PRESETS)),
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--batch_size", type=int, default=16)
@@ -96,6 +102,11 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.output_npy is None:
+        if args.dataset:
+            args.output_npy = f"./logs/{args.dataset}_note_emb.npy"
+        else:
+            args.output_npy = "./logs/note_emb_dict.npy"
     os.makedirs(os.path.dirname(args.output_npy) or ".", exist_ok=True)
 
     model_name = MODEL_PRESETS.get(args.encoder, args.encoder)

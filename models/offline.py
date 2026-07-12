@@ -33,7 +33,7 @@ class Hypergraph:
     All edge tensors are stored on CPU as int64 for easy serialization/sharing.
     """
 
-    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None, time_dim: int | None = None):
+    def __init__(self, sequence_dataset, tokenizers, note_emb_dict, cache_dir: str = "./graph/cache", device="cpu", feature_key_map: dict | None = None, time_dim: int | None = None, note_emb_dim: int | None = None):
         """
         sequence_dataset: list-like of samples (e.g., task_dataset.samples or MMDataset.sequence_dataset)
         tokenizers: dict-like containing keys such as 'cond_hist'/'procedures'/'drugs',
@@ -48,11 +48,22 @@ class Hypergraph:
             feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
         self.feature_key_map = feature_key_map
         self.time_dim = time_dim
+        self.note_emb_dim = note_emb_dim or self._infer_note_emb_dim(note_emb_dict) or 768
         if time_dim is not None:
             self.time2vec = Time2Vec(time_dim)
             self.time2vec.eval()
         else:
             self.time2vec = None
+
+    @staticmethod
+    def _infer_note_emb_dim(note_emb_dict):
+        for value in note_emb_dict.values():
+            if isinstance(value, torch.Tensor):
+                return int(value.numel())
+            arr = np.asarray(value)
+            if arr.size > 0:
+                return int(arr.size)
+        return None
 
     def build_all_in_one(self):
         """
@@ -83,16 +94,12 @@ class Hypergraph:
 
         note_emb_list = []
 
-        for v_idx, proc_tokens in enumerate(procedures):
-            if len(proc_tokens) == 0:
-                continue  # skip empty visit
-            # print(type(visit_ids), visit_ids)
-            vid = visit_ids[v_idx]  # visit id aligned with procedures
+        for vid in visit_ids:
             vid_int = int(vid)
             if vid_int in self.note_emb_dict:
                 note_emb_list.append(self.note_emb_dict[vid_int])
             else:
-                note_emb_list.append(np.zeros(768, dtype=np.float32))
+                note_emb_list.append(np.zeros(self.note_emb_dim, dtype=np.float32))
 
         note_emb = torch.tensor(note_emb_list, dtype=torch.float32)
 
@@ -276,13 +283,13 @@ class Hypergraph:
         return out
 
 class MMDataset(Dataset):
-    def __init__(self, dataset, tokenizer, note_emb_dict, device, feature_key_map: dict | None = None, time_dim: int | None = None):
+    def __init__(self, dataset, tokenizer, note_emb_dict, device, feature_key_map: dict | None = None, time_dim: int | None = None, note_emb_dim: int | None = None):
         self.sequence_dataset = dataset.samples
         self.tokenizer = tokenizer
         self.note_emb_dict = note_emb_dict
         self.device = device
         # Offline hypergraph: build once at initialization
-        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map, time_dim=time_dim)
+        hg_builder = Hypergraph(self.sequence_dataset, self.tokenizer, self.note_emb_dict, device=self.device, feature_key_map=feature_key_map, time_dim=time_dim, note_emb_dim=note_emb_dim)
         self.graph_data = hg_builder.build_all_in_one()  # list of graph dicts
 
     def __len__(self):

@@ -12,7 +12,7 @@ from benchmarks.modules.TSEncoder import Time2Vec
 
 
 class HypergraphEncoder(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, time_dim, device, feature_key_map: dict | None = None, node_emb_path: str | None = None):
+    def __init__(self, tokenizer, hidden_dim, time_dim, device, feature_key_map: dict | None = None, node_emb_path: str | None = None, note_emb_dim: int = 768):
         super().__init__()
         if feature_key_map is None:
             feature_key_map = {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"}
@@ -46,7 +46,8 @@ class HypergraphEncoder(nn.Module):
         )
         self.time2vec = Time2Vec(time_dim).to(self.device)
         self.global_type_emb = nn.Embedding(3, self.node_emb_dim).to(self.device)
-        self.note_projection = nn.Linear(768, 256).to(self.device)
+        self.note_emb_dim = note_emb_dim
+        self.note_projection = nn.Linear(note_emb_dim, hidden_dim).to(self.device)
 
     def _unique_token_ids(self, tokens_2d):
         # tokens_2d: list of lists (may include empty lists)
@@ -194,6 +195,8 @@ class HypergraphEncoder(nn.Module):
                 note_emb = torch.tensor(note_emb, dtype=torch.float32, device=self.device)
             assert note_emb.shape[0] == num_visit, \
                 f"note_emb visits {note_emb.shape[0]} != num_visit {num_visit}"
+            assert note_emb.shape[1] == self.note_emb_dim, \
+                f"note_emb dim {note_emb.shape[1]} != expected {self.note_emb_dim}"
             note_emb = self.note_projection(note_emb)
             data['time_hyperedge'].x = torch.cat([time_emb, note_emb], dim=-1)
 

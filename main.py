@@ -47,7 +47,8 @@ def parse_args():
     parser.add_argument("--gamma_time", type=float, default=0.8,help="initial gamma_time")
     parser.add_argument("--tau_time", type=float, default=4.0, help="initial tau_time in days")
     parser.add_argument("--note_emb_path", type=str, default="")
-    parser.add_argument("--node_emb_path", type=str, default="./logs/node_emb_dict.npy")
+    parser.add_argument("--note_emb_dim", type=int, default=768, help="note embedding dimension; use 1024 for bge-m3")
+    parser.add_argument("--node_emb_path", type=str, default="")
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["none", "cosine"])
     parser.add_argument("--t_max", type=int, default=40,
         help="CosineAnnealingLR period (in epochs); set to epochs for a full cycle",
@@ -74,12 +75,17 @@ def resolve_data_root(args):
 def main():
     args = parse_args()
     args.data_root = resolve_data_root(args)
-    if not args.note_emb_path:
+    if args.model == "HyperCare" and not args.note_emb_path:
         note_emb_root = {
-            "mimic3": "./logs/mimic3_emb_dict.npy",
-            "mimic4": "./logs/mimic4_emb_dict.npy",
+            "mimic3": "./logs/mimic3_note_emb.npy",
+            "mimic4": "./logs/mimic4_note_emb.npy",
         }
-        args.note_emb_path = note_emb_root.get(args.dataset, "./logs/mimic3_emb_dict.npy")
+        args.note_emb_path = note_emb_root.get(args.dataset, "./logs/mimic3_note_emb.npy")
+    if args.model == "HyperCare" and not args.node_emb_path:
+        args.node_emb_path = os.path.join(
+            args.output_dir,
+            f"{args.task}_{args.dataset}_node_emb.npy",
+        )
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     set_seed(args.seed)

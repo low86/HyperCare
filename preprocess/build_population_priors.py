@@ -1,7 +1,5 @@
 import argparse
-import math
 import os
-from datetime import datetime
 
 import numpy as np
 import torch
@@ -15,17 +13,6 @@ TYPE_KEYS = {
     "diag": {"cond": "cond_hist", "proc": "procedures", "drug": "drugs"},
     "drug": {"cond": "conditions", "proc": "procedures", "drug": "drugs_hist"},
 }
-
-
-def parse_time(value):
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(str(value), fmt)
-        except ValueError:
-            continue
-    return None
 
 
 def select_longest_patient_trajectories(samples):
@@ -42,6 +29,20 @@ def select_longest_patient_trajectories(samples):
     return list(patient_to_sample.values())
 
 
+def select_prior_cohort(patient_samples, cohort, train_ratio, seed):
+    if cohort == "all":
+        return patient_samples
+    if cohort != "train":
+        raise ValueError(f"Unknown cohort: {cohort}")
+    patient_samples = list(patient_samples)
+    rng = np.random.default_rng(seed)
+    indices = rng.permutation(len(patient_samples))
+    train_size = int(len(patient_samples) * train_ratio)
+    if patient_samples:
+        train_size = max(1, train_size)
+    return [patient_samples[int(i)] for i in indices[:train_size]]
+
+
 def encode_trajectory(sample, tokenizers, key_map):
     visits = {}
     for type_name, feature_key in key_map.items():
@@ -51,12 +52,10 @@ def encode_trajectory(sample, tokenizers, key_map):
             padding=False,
             truncation=False,
         )
-    times = sample.get("adm_time", [])
-    parsed_times = [parse_time(t) for t in times]
-    return visits, parsed_times
+    return visits
 
 
-def compute_cooccurrence_prior(patient_sets, vocab_size, topk, eps):
+def compute_structural_prior(patient_sets, vocab_size, topk, eps):
     cooc = np.zeros((vocab_size, vocab_size), dtype=np.float32)
     freq = np.zeros(vocab_size, dtype=np.float32)
 
@@ -69,73 +68,51 @@ def compute_cooccurrence_prior(patient_sets, vocab_size, topk, eps):
                 if i != j:
                     cooc[i, j] += 1.0
 
-    denom = freq[:, None] + freq[None, :] - cooc + eps
-    jaccard = np.divide(cooc, denom, out=np.zeros_like(cooc), where=denom > 0)
-    centrality = cooc.sum(axis=1)
-    if centrality.max() > 0:
-        centrality = centrality / centrality.max()
-
-    degree = (jaccard > 0).sum(axis=1).astype(np.float32)
-    specificity = 1.0 / np.sqrt(degree + 1.0)
-    if specificity.max() > specificity.min():
-        specificity = (specificity - specificity.min()) / (
-            specificity.max() - specificity.min()
-        )
+    cooc_sum = cooc.sum(axis=1)
+    structural = np.divide(
+        cooc_sum,
+        cooc_sum.max() + eps,
+        out=np.zeros_like(cooc_sum),
+        where=cooc_sum.max() > 0,
+    )
 
     return {
-        "cooccurrence": torch.tensor(cooc, dtype=torch.float32),
-        "jaccard_topk": dense_to_row_topk_sparse(jaccard, topk=topk),
-        "frequency": torch.tensor(freq, dtype=torch.float32),
-        "centrality": torch.tensor(centrality, dtype=torch.float32),
-        "specificity": torch.tensor(specificity, dtype=torch.float32),
+        "cooccurrence_count": torch.tensor(cooc, dtype=torch.float32),
+        "cooccurrence_topk": dense_to_row_topk_sparse(cooc, topk=topk),
+        "patient_count": torch.tensor(freq, dtype=torch.float32),
+        "structural_prior": torch.tensor(structural, dtype=torch.float32),
+        "centrality": torch.tensor(structural, dtype=torch.float32),
     }
 
 
-def compute_directional_prior(trajectories, vocab_size, topk, tau_days, tau_visits, eps):
-    score = np.zeros((vocab_size, vocab_size), dtype=np.float32)
-    count = np.zeros((vocab_size, vocab_size), dtype=np.float32)
+def compute_directional_prior(trajectories, patient_counts, num_patients, vocab_size, topk, eps):
+    before_count = np.zeros((vocab_size, vocab_size), dtype=np.float32)
 
-    for visits, times in tqdm(trajectories, desc="directional", leave=False):
-        n_visits = len(visits)
-        for t in range(n_visits):
-            src_tokens = set(visits[t])
-            if not src_tokens:
-                continue
-            for u in range(t + 1, n_visits):
-                dst_tokens = set(visits[u])
-                if not dst_tokens:
+    for visits in tqdm(trajectories, desc="directional", leave=False):
+        first_visit = {}
+        last_visit = {}
+        for visit_idx, visit in enumerate(visits):
+            for token in set(visit):
+                first_visit.setdefault(token, visit_idx)
+                last_visit[token] = visit_idx
+
+        tokens = sorted(first_visit)
+        for i in tokens:
+            for j in tokens:
+                if i == j:
                     continue
-                weight = temporal_weight(times, t, u, tau_days, tau_visits)
-                for i in src_tokens:
-                    for j in dst_tokens:
-                        if i == j:
-                            continue
-                        score[i, j] += weight
-                        count[i, j] += 1.0
+                if first_visit[i] < last_visit[j]:
+                    before_count[i, j] += 1.0
 
-    row_sum = score.sum(axis=1, keepdims=True)
-    directional = np.divide(
-        score,
-        row_sum + eps,
-        out=np.zeros_like(score),
-        where=row_sum > 0,
-    )
+    denom = patient_counts[:, None] * patient_counts[None, :] + eps
+    directional = np.log1p(before_count * float(num_patients) / denom)
+    directional[before_count <= 0] = 0.0
 
     return {
         "directional_topk": dense_to_row_topk_sparse(directional, topk=topk),
         "directional_score": torch.tensor(directional, dtype=torch.float32),
-        "transition_count": torch.tensor(count, dtype=torch.float32),
+        "directional_count": torch.tensor(before_count, dtype=torch.float32),
     }
-
-
-def temporal_weight(times, src_idx, dst_idx, tau_days, tau_visits):
-    src_time = times[src_idx] if src_idx < len(times) else None
-    dst_time = times[dst_idx] if dst_idx < len(times) else None
-    if src_time is not None and dst_time is not None:
-        delta_days = max((dst_time - src_time).days, 0)
-        return math.exp(-float(delta_days) / max(tau_days, 1e-6))
-    gap = max(dst_idx - src_idx, 1)
-    return math.exp(-float(gap) / max(tau_visits, 1e-6))
 
 
 def dense_to_row_topk_sparse(matrix, topk):
@@ -198,7 +175,13 @@ def build_priors(args):
         use_icd_raw=False,
     )
     tokenizers = get_init_tokenizers(task_dataset, keys=spec["feature_keys"])
-    patient_samples = select_longest_patient_trajectories(task_dataset.samples)
+    all_patient_samples = select_longest_patient_trajectories(task_dataset.samples)
+    patient_samples = select_prior_cohort(
+        all_patient_samples,
+        cohort=args.cohort,
+        train_ratio=args.train_ratio,
+        seed=args.seed,
+    )
     key_map = TYPE_KEYS[args.task]
 
     patient_sets = {
@@ -213,29 +196,35 @@ def build_priors(args):
     }
 
     for sample in tqdm(patient_samples, desc="encoding trajectories"):
-        visits_by_type, times = encode_trajectory(sample, tokenizers, key_map)
+        visits_by_type = encode_trajectory(sample, tokenizers, key_map)
         for type_name, visits in visits_by_type.items():
             token_set = set()
             for visit in visits:
                 token_set.update(visit)
             patient_sets[type_name].append(token_set)
-            directional_trajectories[type_name].append((visits, times))
+            directional_trajectories[type_name].append(visits)
 
     out = {
         "metadata": {
             "task": args.task,
             "dataset": args.dataset,
-            "num_patients": len(patient_samples),
+            "cohort": args.cohort,
+            "train_ratio": args.train_ratio,
+            "seed": args.seed,
+            "num_all_patients": len(all_patient_samples),
+            "num_prior_patients": len(patient_samples),
             "topk": args.topk,
-            "tau_days": args.tau_days,
-            "tau_visits": args.tau_visits,
+            "formula": {
+                "structural_prior": "gamma_i=sum_j C_ij / (max_k sum_j C_kj + eps)",
+                "directional_score": "S_ij=log(1 + n(i->j) * N / (n_i * n_j + eps))",
+            },
         }
     }
 
     for type_name, feature_key in key_map.items():
         vocab_size = tokenizers[feature_key].get_vocabulary_size()
         print(f"[prior] {type_name}: vocab={vocab_size}")
-        cooc = compute_cooccurrence_prior(
+        structural = compute_structural_prior(
             patient_sets[type_name],
             vocab_size=vocab_size,
             topk=args.topk,
@@ -243,16 +232,16 @@ def build_priors(args):
         )
         directional = compute_directional_prior(
             directional_trajectories[type_name],
+            patient_counts=structural["patient_count"].numpy(),
+            num_patients=len(patient_samples),
             vocab_size=vocab_size,
             topk=args.topk,
-            tau_days=args.tau_days,
-            tau_visits=args.tau_visits,
             eps=args.eps,
         )
         out[type_name] = {
             "feature_key": feature_key,
             "index_to_token": tokenizer_vocab(tokenizers[feature_key]),
-            **cooc,
+            **structural,
             **directional,
         }
 
@@ -268,8 +257,9 @@ def parse_args():
     parser.add_argument("--data_root", required=True)
     parser.add_argument("--output_path", default="./logs/population_priors.pt")
     parser.add_argument("--topk", type=int, default=32)
-    parser.add_argument("--tau_days", type=float, default=365.0)
-    parser.add_argument("--tau_visits", type=float, default=4.0)
+    parser.add_argument("--cohort", choices=["train", "all"], default="train")
+    parser.add_argument("--train_ratio", type=float, default=0.75)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eps", type=float, default=1e-8)
     parser.add_argument("--devm", action="store_true")
     return parser.parse_args()
