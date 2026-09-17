@@ -248,7 +248,6 @@ class SimpleTrainer:
                     "f1_samples",
                     "jaccard_samples",
                     "pr_auc_samples",
-                    "precision_samples",
                     "roc_auc_samples",
                     "code_level",
                     "visit_level",
@@ -275,7 +274,6 @@ class SimpleTrainer:
                 f"[metrics] F1={metrics['f1_samples']:.4f} "
                 f"Jaccard={metrics['jaccard_samples']:.4f} "
                 f"PR-AUC={metrics['pr_auc_samples']:.4f} "
-                f"Precision={metrics['precision_samples']:.4f} "
                 f"ROC-AUC={metrics['roc_auc_samples']:.4f}"
             )
         if "visit_level" in metrics:
@@ -292,7 +290,6 @@ class SimpleTrainer:
                 f"[metrics] F1={metrics['f1_samples']:.4f} "
                 f"Jaccard={metrics['jaccard_samples']:.4f} "
                 f"PR-AUC={metrics['pr_auc_samples']:.4f} "
-                f"Precision={metrics['precision_samples']:.4f} "
                 f"ROC-AUC={metrics['roc_auc_samples']:.4f}"
             )
         if "visit_level" in metrics:

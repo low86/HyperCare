@@ -8,7 +8,6 @@ from core.utils import *
 import torch.nn as nn
 from torch_geometric.nn import Linear
 
-from torch_geometric.data import Batch
 from torch_scatter import scatter_add, scatter_mean, scatter_softmax, scatter_sum, scatter_max
 from models.online_encoder import HypergraphEncoder
 
@@ -305,27 +304,22 @@ class HypergraphModel(nn.Module):
             'proc': Linear(-1, hidden_dim),
             'drug': Linear(-1, hidden_dim),
             'time_hyperedge': Linear(-1, hidden_dim),
-            'cond_hyperedge': Linear(-1, hidden_dim),
-            'proc_hyperedge': Linear(-1, hidden_dim),
-            'drug_hyperedge': Linear(-1, hidden_dim),
         })
 
-    def build_hypergraph_batch(self, graph_list):
-        """
-        graph_list: list of offline graphs for the batch
-        """
-        h_list = []
-        for i, gdict in enumerate(graph_list):
-            g = self.encoder(gdict)  # embedding lookup
-            h_list.append(g)
-       
-        return Batch.from_data_list(h_list)
+    def build_hypergraph_batch(self, graph_batch):
+        """Materialize features once for an already-collated offline batch."""
+        if not hasattr(graph_batch, 'node_types'):
+            raise TypeError(
+                "HyperCare expects a prebatched PyG graph. Delete the old "
+                "HyperCare cache so the v2 offline graph can be rebuilt."
+            )
+        return self.encoder(graph_batch)
 
 
     def forward(self, batchdata):
   
-        _, graph_list = batchdata
-        g_batch = self.build_hypergraph_batch(graph_list)
+        _, graph_batch = batchdata
+        g_batch = self.build_hypergraph_batch(graph_batch)
 
         for node_type in g_batch.node_types:
             g_batch[node_type].x = self.node_projs[node_type](g_batch[node_type].x)

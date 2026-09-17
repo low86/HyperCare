@@ -175,7 +175,18 @@ def custom_collate_fn(batch):
 
     sequence_data_batch = {key: [d[key] for d in sequence_data_list if d[key]!=[]] for key in sequence_data_list[0]}
 
-    graph_data_batch = graph_data_list
+    if graph_data_list and all(
+        isinstance(graph, dict) and "hetero_data" in graph
+        for graph in graph_data_list
+    ):
+        from torch_geometric.data import Batch as GeometricBatch
+
+        graph_data_batch = GeometricBatch.from_data_list(
+            [graph["hetero_data"] for graph in graph_data_list]
+        )
+    else:
+        # TRANS still owns its legacy per-sample graph collation path.
+        graph_data_batch = graph_data_list
 
     return sequence_data_batch, graph_data_batch
 
