@@ -44,6 +44,8 @@ def build_model(model_name, task_dataset, tokenizers, device, args):
             feature_key_map={"cond": "conditions", "proc": "procedures", "drug": "drugs_hist"},
             node_emb_path=getattr(args, "node_emb_path", ""),
             note_emb_dim=getattr(args, "note_emb_dim", 768),
+            use_type_centrality=getattr(args, "use_type_centrality", False),
+            population_priors_path=getattr(args, "population_priors_path", ""),
         )
 
     if model_name == "Transformer":

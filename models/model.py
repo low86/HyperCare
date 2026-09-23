@@ -3,6 +3,7 @@
 # Online Hypergraph Generator Version #
 ######################################
 
+import os
 import torch
 from core.utils import *
 import torch.nn as nn
@@ -134,6 +135,102 @@ class Node2TimeAggregator(nn.Module):
     
 
 
+class TypeHyperedgeInitializer(nn.Module):
+    """Initialize one patient-level hyperedge for each clinical event type."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        node_types=("cond", "proc", "drug"),
+        use_type_centrality=False,
+        population_priors_path=None,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.node_types = tuple(node_types)
+        self.use_type_centrality = use_type_centrality
+
+        if use_type_centrality:
+            priors = self._load_population_priors(population_priors_path)
+            for node_type in self.node_types:
+                centrality = priors.get(node_type, {}).get("centrality")
+                if not isinstance(centrality, torch.Tensor) or centrality.ndim != 1:
+                    raise ValueError(
+                        f"Population prior for {node_type} must provide a 1-D "
+                        "'centrality' tensor."
+                    )
+                self.register_buffer(
+                    f"{node_type}_centrality", centrality.float().clone()
+                )
+
+    @staticmethod
+    def _load_population_priors(population_priors_path):
+        if not population_priors_path:
+            raise ValueError(
+                "population_priors_path is required when use_type_centrality=True."
+            )
+        if not os.path.isfile(population_priors_path):
+            raise FileNotFoundError(
+                f"Population priors not found: {population_priors_path}"
+            )
+        try:
+            return torch.load(
+                population_priors_path, map_location="cpu", weights_only=True
+            )
+        except TypeError:
+            return torch.load(population_priors_path, map_location="cpu")
+
+    def forward(self, data):
+        if "type_hyperedge" not in data.node_types:
+            return data
+
+        type_x = torch.zeros(
+            data["type_hyperedge"].num_nodes,
+            self.hidden_dim,
+            dtype=data["time_hyperedge"].x.dtype,
+            device=data["time_hyperedge"].x.device,
+        )
+
+        for node_type in self.node_types:
+            edge_type = (node_type, "in_type", "type_hyperedge")
+            if node_type not in data.node_types or edge_type not in data.edge_types:
+                continue
+
+            edge_index = data[edge_type].edge_index
+            if edge_index.numel() == 0:
+                continue
+            src, dst = edge_index
+            node_x = data[node_type].x
+
+            if self.use_type_centrality:
+                centrality = getattr(self, f"{node_type}_centrality")
+                token_ids = data[node_type].token_ids[src]
+                if token_ids.numel() and token_ids.max() >= centrality.numel():
+                    raise ValueError(
+                        f"Centrality vocabulary for {node_type} does not match "
+                        "the graph tokenizer."
+                    )
+                weights = centrality[token_ids].to(node_x.dtype)
+                weighted_sum = scatter_add(
+                    node_x[src] * weights.unsqueeze(-1),
+                    dst,
+                    dim=0,
+                    dim_size=type_x.size(0),
+                )
+                normalizer = scatter_add(
+                    weights, dst, dim=0, dim_size=type_x.size(0)
+                ).clamp_min(torch.finfo(node_x.dtype).eps)
+                type_x += weighted_sum / normalizer.unsqueeze(-1)
+            else:
+                type_x += scatter_mean(
+                    node_x[src], dst, dim=0, dim_size=type_x.size(0)
+                )
+
+        data["type_hyperedge"].x = type_x
+        return data
+
+
+
 class Time2NodeAggregator(nn.Module):
     """
     Time -> node feedback using attention or simple aggregation.
@@ -259,6 +356,61 @@ class Time2TimeAggregator(nn.Module):
         return data
     
 
+class Type2TimeAggregator(nn.Module):
+    """Aggregate connected type hyperedges into their visit hyperedges."""
+
+    def __init__(self, hidden_dim, num_heads=4, dropout=0.5):
+        super().__init__()
+        assert hidden_dim % num_heads == 0
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.head_dim = hidden_dim // num_heads
+
+        self.q_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.k_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.v_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.out_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, data):
+        edge_key = ("type_hyperedge", "to_time", "time_hyperedge")
+        if edge_key not in data.edge_types:
+            return data
+
+        edge_index = data[edge_key].edge_index
+        if edge_index.numel() == 0:
+            return data
+
+        time_x = data["time_hyperedge"].x
+        type_x = data["type_hyperedge"].x
+        src, dst = edge_index
+
+        q_all = self.q_proj(time_x).view(-1, self.num_heads, self.head_dim)
+        k_all = self.k_proj(type_x).view(-1, self.num_heads, self.head_dim)
+        v_all = self.v_proj(type_x).view(-1, self.num_heads, self.head_dim)
+
+        q_edges = q_all[dst]
+        k_edges = k_all[src]
+        v_edges = v_all[src]
+        att_score = (q_edges * k_edges).sum(-1) / (self.head_dim ** 0.5)
+        att = scatter_softmax(att_score, dst, dim=0)
+        att = self.dropout(att).unsqueeze(-1)
+
+        out_heads = scatter_add(
+            att * v_edges, dst, dim=0, dim_size=time_x.size(0)
+        )
+        out = out_heads.reshape(time_x.size(0), self.hidden_dim)
+        out = self.out_proj(out)
+        has_type = scatter_add(
+            torch.ones_like(dst, dtype=out.dtype),
+            dst,
+            dim=0,
+            dim_size=time_x.size(0),
+        ).gt(0).unsqueeze(-1)
+        data["time_hyperedge"].x = time_x + out * has_type
+        return data
+
+
 
 # -------------------------------------------#
 # Hypergraph Model
@@ -272,16 +424,36 @@ class HypergraphLayer(nn.Module):
         self.time2event = Time2NodeAggregator(hidden_dim=input_dim, time_dim=time_dim, mode='attention', num_heads=num_heads, \
                                                          gamma_time=gamma_time, tau_time=tau_time, att_dropout=0.5)
         self.time2time = Time2TimeAggregator(hidden_dim=input_dim, num_heads=num_heads, time_decay_init=365.0, dropout=0.5)
+        self.type2time = Type2TimeAggregator(
+            hidden_dim=input_dim, num_heads=num_heads, dropout=0.5
+        )
 
     def forward(self, g):
         g = self.event2time(g)
         g = self.time2time(g)
+        g = self.type2time(g)  # Uncomment to enable type-to-time aggregation.
         g = self.time2event(g)
         return g
 
 
 class HypergraphModel(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, time_dim, output_dim, num_heads, num_layers, gamma_time, tau_time, device='cuda', feature_key_map: dict | None = None, node_emb_path: str | None = None, note_emb_dim: int = 768):
+    def __init__(
+        self,
+        tokenizer,
+        hidden_dim,
+        time_dim,
+        output_dim,
+        num_heads,
+        num_layers,
+        gamma_time,
+        tau_time,
+        device='cuda',
+        feature_key_map: dict | None = None,
+        node_emb_path: str | None = None,
+        note_emb_dim: int = 768,
+        use_type_centrality: bool = False,
+        population_priors_path: str | None = None,
+    ):
         super().__init__()
         self.device = torch.device(device)
         self.encoder = HypergraphEncoder(
@@ -292,6 +464,12 @@ class HypergraphModel(nn.Module):
             feature_key_map=feature_key_map,
             node_emb_path=node_emb_path,
             note_emb_dim=note_emb_dim,
+        )
+        self.type_initializer = TypeHyperedgeInitializer(
+            hidden_dim,
+            node_types=tuple(self.encoder.feature_key_map),
+            use_type_centrality=use_type_centrality,
+            population_priors_path=population_priors_path,
         )
         self.layer = HypergraphLayer(hidden_dim, output_dim, time_dim, num_heads, gamma_time, tau_time)
         self.to(self.device)
@@ -321,8 +499,12 @@ class HypergraphModel(nn.Module):
         _, graph_batch = batchdata
         g_batch = self.build_hypergraph_batch(graph_batch)
 
-        for node_type in g_batch.node_types:
-            g_batch[node_type].x = self.node_projs[node_type](g_batch[node_type].x)
+        for node_type, projection in self.node_projs.items():
+            if node_type in g_batch.node_types:
+                g_batch[node_type].x = projection(g_batch[node_type].x)
+
+        # Type hyperedges are initialized once from their incident occurrences.
+        g_batch = self.type_initializer(g_batch)
 
         for layer in range(self.num_layers):
             g_batch = self.layer(g_batch)

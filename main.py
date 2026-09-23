@@ -49,6 +49,17 @@ def parse_args():
     parser.add_argument("--note_emb_path", type=str, default="")
     parser.add_argument("--note_emb_dim", type=int, default=768, help="note embedding dimension; use 1024 for bge-m3")
     parser.add_argument("--node_emb_path", type=str, default="")
+    parser.add_argument(
+        "--use_type_centrality",
+        action="store_true",
+        help="Initialize type hyperedges with population-centrality weighting.",
+    )
+    parser.add_argument(
+        "--population_priors_path",
+        type=str,
+        default="",
+        help="Path to population_priors.pt; required with --use_type_centrality.",
+    )
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["none", "cosine"])
     parser.add_argument("--t_max", type=int, default=40,
         help="CosineAnnealingLR period (in epochs); set to epochs for a full cycle",

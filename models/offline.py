@@ -38,6 +38,7 @@ class Hypergraph:
             "proc": "procedures",
             "drug": "drugs",
         }
+        self.node_types = tuple(self.feature_key_map)
         self.note_emb_dim = note_emb_dim or self._infer_note_emb_dim(note_emb_dict) or 768
 
     @staticmethod
@@ -82,6 +83,21 @@ class Hypergraph:
             history = range(max(0, current - window_size), current + 1)
             sources.extend(history)
             destinations.extend([current] * len(history))
+        return torch.tensor([sources, destinations], dtype=torch.long)
+
+    @staticmethod
+    def _type_time_incidence(encoded, node_types):
+        """Connect a type hyperedge to visits that contain that event type."""
+        sources = []
+        destinations = []
+        for type_index, node_type in enumerate(node_types):
+            for visit_index, visit_tokens in enumerate(encoded[node_type]):
+                if visit_tokens:
+                    sources.append(type_index)
+                    destinations.append(visit_index)
+
+        if not sources:
+            return torch.empty((2, 0), dtype=torch.long)
         return torch.tensor([sources, destinations], dtype=torch.long)
 
     def build_all_in_one(self):
@@ -133,11 +149,29 @@ class Hypergraph:
         data["time_hyperedge"].rel_adm_time = rel_time
         data["time_hyperedge"].note_emb = note_emb
 
+        data["type_hyperedge"].num_nodes = len(self.node_types)
+        data["type_hyperedge"].type_id = torch.arange(
+            len(self.node_types), dtype=torch.long
+        )
+
         for node_type, visits in encoded.items():
             token_ids, edge_index = self._occurrence_time_incidence(visits)
             data[node_type].num_nodes = int(token_ids.numel())
             data[node_type].token_ids = token_ids
             data[node_type, "in_time", "time_hyperedge"].edge_index = edge_index
+            type_index = self.node_types.index(node_type)
+            data[node_type, "in_type", "type_hyperedge"].edge_index = torch.stack(
+                [
+                    torch.arange(token_ids.numel(), dtype=torch.long),
+                    torch.full(
+                        (token_ids.numel(),), type_index, dtype=torch.long
+                    ),
+                ]
+            )
+
+        data[
+            "type_hyperedge", "to_time", "time_hyperedge"
+        ].edge_index = self._type_time_incidence(encoded, self.node_types)
 
         data[
             "time_hyperedge", "connect", "time_hyperedge"
@@ -149,7 +183,7 @@ class Hypergraph:
 class MMDataset(Dataset):
     """Pair sequence labels with prebuilt static patient graphs."""
 
-    CACHE_SCHEMA_VERSION = 2
+    CACHE_SCHEMA_VERSION = 3
 
     def __init__(
         self,
