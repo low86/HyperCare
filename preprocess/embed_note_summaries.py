@@ -86,7 +86,7 @@ def parse_args():
     parser.add_argument("--output_npy", default=None)
     parser.add_argument(
         "--encoder",
-        default="bioclinicalbert",
+        default="bge-m3",
         help="Preset name or Hugging Face model/path. Presets: "
         + ", ".join(f"{k} ({EMBEDDING_DIMS[k]}d)" for k in sorted(MODEL_PRESETS)),
     )

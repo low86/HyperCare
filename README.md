@@ -109,7 +109,7 @@ python preprocess/embed_note_summaries.py \
   --dataset mimic4 \
   --summary_jsonl ./results/mimic4_note_summaries.jsonl \
   --output_npy ./results/mimic4_note_emb.npy \
-  --encoder bioclinicalbert \
+  --encoder bge-m3 \
   --resume
 ```
 
@@ -125,7 +125,7 @@ python preprocess/build_node_embeddings.py \
   --output_npy ./results/drug_mimic4_node_emb.npy \
   --api_base http://127.0.0.1:8000/v1 \
   --llm_model Qwen/Qwen2.5-7B-Instruct \
-  --encoder bioclinicalbert \
+  --encoder bge-m3 \
   --resume
 ```
 
@@ -138,11 +138,11 @@ python main.py \
   --model HyperCare \
   --data_root <PATH_TO_MIMIC3_HOSP> \
   --note_emb_path ./results/mimic3_note_emb.npy \
-  --note_emb_dim <NOTE_EMB_DIM> \
+  --note_emb_dim 1024 \
   --node_emb_path ./results/drug_mimic3_node_emb.npy
 ```
 
-Set `<NOTE_EMB_DIM>` to the note encoder output dimension: `clinical-longformer` = 768, `bioclinicalbert` = 768, `bge-m3` = 1024. Supported encoder presets are `clinical-longformer`, `bioclinicalbert`, and `bge-m3`.
+The default encoder is `bge-m3`, which outputs 1024-dimensional embeddings. Supported encoder presets are `clinical-longformer`, `bioclinicalbert`, and `bge-m3`.
 
 ## Environment
 The recommended environment is provided in `environment.yml`.

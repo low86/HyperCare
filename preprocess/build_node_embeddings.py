@@ -195,7 +195,7 @@ def parse_args():
     parser.add_argument("--api_base", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--api_key", default=os.environ.get("OPENAI_API_KEY", "EMPTY"))
     parser.add_argument("--llm_model", default="Qwen/Qwen2.5-7B-Instruct")
-    parser.add_argument("--encoder", default="bioclinicalbert")
+    parser.add_argument("--encoder", default="bge-m3")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--max_length", type=int, default=256)

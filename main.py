@@ -47,7 +47,7 @@ def parse_args():
     parser.add_argument("--gamma_time", type=float, default=0.8,help="initial gamma_time")
     parser.add_argument("--tau_time", type=float, default=4.0, help="initial tau_time in days")
     parser.add_argument("--note_emb_path", type=str, default="")
-    parser.add_argument("--note_emb_dim", type=int, default=768, help="note embedding dimension; use 1024 for bge-m3")
+    parser.add_argument("--note_emb_dim", type=int, default=1024, help="note embedding dimension; 1024 for the default bge-m3 encoder")
     parser.add_argument("--node_emb_path", type=str, default="")
     parser.add_argument(
         "--use_type_centrality",

@@ -424,9 +424,7 @@ class HypergraphLayer(nn.Module):
         self.time2event = Time2NodeAggregator(hidden_dim=input_dim, time_dim=time_dim, mode='attention', num_heads=num_heads, \
                                                          gamma_time=gamma_time, tau_time=tau_time, att_dropout=0.5)
         self.time2time = Time2TimeAggregator(hidden_dim=input_dim, num_heads=num_heads, time_decay_init=365.0, dropout=0.5)
-        self.type2time = Type2TimeAggregator(
-            hidden_dim=input_dim, num_heads=num_heads, dropout=0.5
-        )
+        self.type2time = Type2TimeAggregator(hidden_dim=input_dim, num_heads=num_heads, dropout=0.5)
 
     def forward(self, g):
         g = self.event2time(g)
