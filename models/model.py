@@ -7,10 +7,30 @@ import os
 import torch
 from core.utils import *
 import torch.nn as nn
+import torch.nn.functional as F
 from torch_geometric.nn import Linear
 
 from torch_scatter import scatter_add, scatter_mean, scatter_softmax, scatter_sum, scatter_max
 from models.online_encoder import HypergraphEncoder
+
+
+
+class SemanticGuidance(nn.Module):
+    """Paper Eq. 12: semantic compatibility between an event and its visit note."""
+
+    def __init__(self, note_emb_dim, hidden_dim, lambda_sem=1.0):
+        super().__init__()
+        self.note_projection = nn.Linear(note_emb_dim, hidden_dim)
+        self.lambda_sem = lambda_sem
+
+    def forward(self, q, k, node_x, node_type, data, edge_index):
+        del q, k, node_type
+        _, dst = edge_index
+        note_x = data["time_hyperedge"].note_emb[dst].float()
+        note_x = self.note_projection(note_x)
+        similarity = F.cosine_similarity(node_x, note_x, dim=-1)
+        # With population guidance absent, phi_evt = lambda_sem * g_sem.
+        return self.lambda_sem * similarity
 
 
 
@@ -19,7 +39,7 @@ from models.online_encoder import HypergraphEncoder
 # -------------------------------------------#
 class Node2TimeAggregator(nn.Module):
     def __init__(self, hidden_dim, time_dim, mode='attention', num_heads=4, att_dropout=0.5, gamma_time=0.8,
-                 tau_time=4.0):
+                 tau_time=4.0, note_emb_dim=768):
         super(Node2TimeAggregator, self).__init__()
         self.mode = mode
         self.hidden_dim = hidden_dim
@@ -30,8 +50,11 @@ class Node2TimeAggregator(nn.Module):
         self.tau_time = nn.Parameter(torch.tensor(tau_time))
         self.layernorm = nn.LayerNorm(hidden_dim)
         self.alpha = nn.Parameter(torch.tensor(1.0))
-        # Optional guidance bias callable: fn(q, u, data, edge_index) -> bias per-edge
+        # Optional guidance bias callable. See ``set_guidance_fn`` for its signature.
         self.guidance_fn = None
+        # self.set_guidance_fn(
+        #     SemanticGuidance(note_emb_dim=note_emb_dim, hidden_dim=hidden_dim)
+        # )
 
         if mode == 'attention':
             assert hidden_dim % num_heads == 0, "hidden_dim must be divisible by num_heads"
@@ -66,7 +89,9 @@ class Node2TimeAggregator(nn.Module):
     def set_guidance_fn(self, fn):
         """
         Set optional guidance bias function.
-        Expected signature: fn(q, u, data, edge_index) -> bias with shape [E, H] or [E, 1] or [E]
+        Expected signature:
+        fn(q, k, node_x, node_type, data, edge_index) -> bias with shape
+        [E, H], [E, 1], or [E].
         """
         self.guidance_fn = fn
 
@@ -111,16 +136,19 @@ class Node2TimeAggregator(nn.Module):
                 # base attention
                 att_score = (q * k).sum(-1) / (self.head_dim ** 0.5)
                 att_score = self.leakyrelu(att_score)
-                if self.guidance_fn is not None:
-                    bias = self.guidance_fn(q, k, data, edge_index)
-                    if bias is not None:
-                        if bias.dim() == 1:
-                            bias = bias.unsqueeze(-1)
-                        att_score = att_score + bias
                 batch_idx = data['time_hyperedge'].batch
                 visit_times = data['time_hyperedge'].adm_time  # [num_visits]
                 time_factor_h = self._compute_time_factor(visit_times, dst, batch_idx)
                 att_score = att_score * time_factor_h
+                if self.guidance_fn is not None:
+                    bias = self.guidance_fn(
+                        q, k, node_x[src], node_type, data, edge_index
+                    )
+                    if bias is not None:
+                        if bias.dim() == 1:
+                            bias = bias.unsqueeze(-1)
+                        # Paper Eq. 10: add route-specific guidance to the logit.
+                        att_score = att_score + bias
                 # normalize
                 att = scatter_softmax(att_score, dst, dim=0)
                 att = self.dropout(att).unsqueeze(-1)
@@ -417,10 +445,20 @@ class Type2TimeAggregator(nn.Module):
 # -------------------------------------------#
 class HypergraphLayer(nn.Module):
 
-    def __init__(self, input_dim, out_features, time_dim, num_heads, gamma_time, tau_time):
+    def __init__(
+        self,
+        input_dim,
+        out_features,
+        time_dim,
+        num_heads,
+        gamma_time,
+        tau_time,
+        note_emb_dim=768,
+    ):
         super().__init__()
         self.event2time = Node2TimeAggregator(hidden_dim=input_dim, time_dim=time_dim, mode='attention', num_heads=num_heads, \
-                                                         gamma_time=gamma_time, tau_time=tau_time, att_dropout=0.5)
+                                                         gamma_time=gamma_time, tau_time=tau_time, att_dropout=0.5,
+                                                         note_emb_dim=note_emb_dim)
         self.time2event = Time2NodeAggregator(hidden_dim=input_dim, time_dim=time_dim, mode='attention', num_heads=num_heads, \
                                                          gamma_time=gamma_time, tau_time=tau_time, att_dropout=0.5)
         self.time2time = Time2TimeAggregator(hidden_dim=input_dim, num_heads=num_heads, time_decay_init=365.0, dropout=0.5)
@@ -469,7 +507,15 @@ class HypergraphModel(nn.Module):
             use_type_centrality=use_type_centrality,
             population_priors_path=population_priors_path,
         )
-        self.layer = HypergraphLayer(hidden_dim, output_dim, time_dim, num_heads, gamma_time, tau_time)
+        self.layer = HypergraphLayer(
+            hidden_dim,
+            output_dim,
+            time_dim,
+            num_heads,
+            gamma_time,
+            tau_time,
+            note_emb_dim=note_emb_dim,
+        )
         self.to(self.device)
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.num_layers = num_layers
