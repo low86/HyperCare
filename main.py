@@ -16,7 +16,7 @@ from core.trainer_adapter import pick_trainer
 # Supported baselines:
 # - task=drug: Transformer, RETAIN, StageNet, Deepr, AdaCare, ConCare, GRASP,
 #              DrAgent, SafeDrug, GAMENet, MICRON, MoleRec, TRANS, HyperCare
-# - task=diag: Transformer, RETAIN, StageNet, KAME, TRANS, HyperCare
+# - task=diag: Transformer, RETAIN, StageNet, TRANS, HyperCare
 
 def parse_args():
     parser = argparse.ArgumentParser()

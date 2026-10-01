@@ -8,7 +8,6 @@ from pyhealth.datasets import  MIMIC4Dataset, MIMIC3Dataset
 import torch.nn.functional as F
 from torch.utils.data import random_split, DataLoader, Subset
 from pyhealth.datasets import split_by_patient, get_dataloader
-from pyhealth.medcode import InnerMap
 
 def get_label_tokenizer(label_tokens):
     special_tokens = []
@@ -47,17 +46,13 @@ def convert_to_relative_time(datetime_strings):
     base_time = min(datetimes)
     return [timedelta_to_days(dt - base_time) for dt in datetimes]
 
-def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "prescriptions"], task_fn = None, dev = False, use_icd_raw: bool = False):
+def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "prescriptions"], task_fn = None, dev = False):
     if dataset=='mimic3':
         code_mapping = {
             "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
             "ICD9CM": "CCSCM",
             "ICD9PROC": "CCSPROC",
         }
-        if use_icd_raw:
-            code_mapping = {
-                "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
-            }
         dataset = MIMIC3Dataset(
             root = root,
             dev = dev,
@@ -73,10 +68,6 @@ def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "pre
             "ICD10CM": "CCSCM",
             "ICD10PROC": "CCSPROC",
         }
-        if use_icd_raw:
-            code_mapping = {
-                "NDC": ("ATC", {"target_kwargs": {"level": 3}}),
-            }
         dataset = MIMIC4Dataset(
             root=root,
             dev=dev,
@@ -92,22 +83,6 @@ def load_dataset(dataset, root , tables=["diagnoses_icd", "procedures_icd", "pre
 def get_init_tokenizers(task_dataset, keys = ['cond_hist', 'procedures', 'drugs']):
     Tokenizers = {key: Tokenizer(tokens=task_dataset.get_all_tokens(key), special_tokens=["<pad>"]) for key in keys}
     return Tokenizers
-
-def get_parent_tokenizers(task_dataset, keys = ['cond_hist', 'procedures']):
-    parent_tokenizers = {}
-    dictionary = {'cond_hist':InnerMap.load("ICD9CM"), 'procedures':InnerMap.load("ICD9PROC")}
-    for feature_key in keys:
-        assert feature_key in dictionary.keys()
-        tokens = task_dataset.get_all_tokens(feature_key)
-        parent_tokens = set()
-        for token in tokens:
-            try:
-                parent_tokens.update(dictionary[feature_key].get_ancestors(token))
-            except:
-                continue
-        parent_tokenizers[feature_key + '_parent'] = Tokenizer(tokens=list(parent_tokens), special_tokens=["<pad>"])
-    return parent_tokenizers
-
 
 def split_dataset(dataset, train_ratio=0.75, valid_ratio=0.1, test_ratio=0.15):
     # Ensure the ratios sum to 1

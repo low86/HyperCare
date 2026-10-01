@@ -49,7 +49,6 @@ class TaskSpec:
             root=args.data_root,
             task_fn=spec["task_fn"][args.dataset],
             dev=args.devm,
-            use_icd_raw=(args.model == "KAME"),
         )
 
         tokenizers = get_init_tokenizers(task_dataset, keys=spec["feature_keys"])
