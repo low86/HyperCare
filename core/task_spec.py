@@ -21,6 +21,7 @@ from core.utils import (
     mm_dataloader,
     seq_dataloader,
     split_dataset,
+    split_mm_dataset_by_patient,
 )
 
 
@@ -94,7 +95,12 @@ class TaskSpec:
                     note_emb_dim=args.note_emb_dim,
                 )
                 dump(mdataset, cache_path)
-            trainset, validset, testset = split_dataset(mdataset)
+            split_fn = (
+                split_mm_dataset_by_patient
+                if args.split_strategy == "patient"
+                else split_dataset
+            )
+            trainset, validset, testset = split_fn(mdataset)
             dataloaders = mm_dataloader(
                 trainset, validset, testset, batch_size=args.batch_size
             )
@@ -132,7 +138,12 @@ class TaskSpec:
                     feature_key_map=feature_key_map,
                 )
                 dump(mdataset, cache_path)
-            trainset, validset, testset = split_dataset(mdataset)
+            split_fn = (
+                split_mm_dataset_by_patient
+                if args.split_strategy == "patient"
+                else split_dataset
+            )
+            trainset, validset, testset = split_fn(mdataset)
             dataloaders = mm_dataloader(
                 trainset, validset, testset, batch_size=args.batch_size
             )

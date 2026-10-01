@@ -27,6 +27,9 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--dev", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--split_strategy", type=str, default="random", choices=["patient", "random"],
+        help="Split HyperCare by patient_id or random samples.",
+    )
     parser.add_argument("--devm", type=bool, default=False)
     parser.add_argument("--data_root", type=str, default="")
     parser.add_argument("--epochs", type=int, default=50)
@@ -49,15 +52,9 @@ def parse_args():
     parser.add_argument("--note_emb_path", type=str, default="")
     parser.add_argument("--note_emb_dim", type=int, default=1024, help="note embedding dimension; 1024 for the default bge-m3 encoder")
     parser.add_argument("--node_emb_path", type=str, default="")
-    parser.add_argument(
-        "--use_type_centrality",
-        action="store_true",
-        help="Initialize type hyperedges with population-centrality weighting.",
-    )
-    parser.add_argument(
-        "--population_priors_path",
-        type=str,
-        default="",
+    parser.add_argument("--use_type_centrality", action="store_true",
+        help="Initialize type hyperedges with population-centrality weighting.",)
+    parser.add_argument("--population_priors_path", type=str, default="",
         help="Path to population_priors.pt; required with --use_type_centrality.",
     )
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["none", "cosine"])
@@ -103,7 +100,8 @@ def main():
     device = torch.device(f"cuda:{args.dev}" if torch.cuda.is_available() else "cpu")
 
     print(
-        f"[main] task={args.task} model={args.model} dataset={args.dataset}",
+        f"[main] task={args.task} model={args.model} dataset={args.dataset} "
+        f"split={args.split_strategy}",
         flush=True,
     )
 
