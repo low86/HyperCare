@@ -163,12 +163,20 @@ Key versions:
 - PyHealth 1.1.6
 
 <h2><img src="source/happy.jpg" alt="happy" width="24" style="vertical-align: middle;"> Citation</h2>
+
+If you find this work useful, please cite our paper:
+
+Yuxuan Tian, Wen Zhang, and Hang Qiu. 2026. HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction. In *Proceedings of the 34th ACM International Conference on Multimedia (MM '26)*, 9648–9656. https://doi.org/10.1145/3767308.3836250
+
 ```bibtex
 @inproceedings{hypercare2026,
-  title     = {HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction},
-  author    = {Yuxuan Tian and Wen Zhang and Hang Qiu},
+  title     = {{HyperCare}: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction},
+  author    = {Tian, Yuxuan and Zhang, Wen and Qiu, Hang},
   booktitle = {Proceedings of the 34th ACM International Conference on Multimedia},
+  series    = {MM '26},
   year      = {2026},
+  pages     = {9648--9656},
+  publisher = {Association for Computing Machinery},
   doi       = {10.1145/3767308.3836250},
   url       = {https://doi.org/10.1145/3767308.3836250}
 }
