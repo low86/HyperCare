@@ -1,6 +1,8 @@
 ﻿# [MM'2026] HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction
 
-[![ACM MM 2026](https://img.shields.io/badge/ACM%20MM-2026-blue)](#)
+[![ACM MM 2026](https://img.shields.io/badge/ACM%20MM-2026-blue)](https://dl.acm.org/doi/10.1145/3767308.3836250)
+[![GitHub](https://img.shields.io/badge/GitHub-Code-181717?logo=github)](https://github.com/low86/HyperCare)
+[![PDF](https://img.shields.io/badge/PDF-Paper-red?logo=adobeacrobatreader)](https://dl.acm.org/doi/pdf/10.1145/3767308.3836250)
 
 This repository contains the official implementation of **HyperCare**, accepted by **ACM Multimedia 2026**.
 
@@ -90,6 +92,8 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
 ### Clinical Note Summaries
 Generate summaries for admissions used by the selected task:
 
+The summarizer uses only the chief complaint and past medical history sections. Discharge diagnoses, discharge condition, and discharge medications are excluded to avoid directly exposing outcome information. These sections still come from discharge summaries, so their recording time is after admission; validate temporal availability before treating the resulting features as prospective inputs.
+
 ```bash
 python preprocess/build_note_summaries.py \
   --dataset mimic4 \
@@ -103,6 +107,8 @@ python preprocess/build_note_summaries.py \
 ```
 
 Encode summaries into `note_emb_path`:
+
+After changing the selected sections, regenerate the summary JSONL and note embedding NPY from scratch. `--resume` reuses existing records and will not replace summaries or embeddings made with the previous section set.
 
 ```bash
 python preprocess/embed_note_summaries.py \
@@ -160,9 +166,11 @@ Key versions:
 ```bibtex
 @inproceedings{hypercare2026,
   title     = {HyperCare: Longitudinal Heterogeneous Hypergraph Neural Network for Healthcare Prediction},
-  author    = {TBD},
-  booktitle = {Proceedings of the ACM International Conference on Multimedia},
-  year      = {2026}
+  author    = {Yuxuan Tian and Wen Zhang and Hang Qiu},
+  booktitle = {Proceedings of the 34th ACM International Conference on Multimedia},
+  year      = {2026},
+  doi       = {10.1145/3767308.3836250},
+  url       = {https://doi.org/10.1145/3767308.3836250}
 }
 ```
 

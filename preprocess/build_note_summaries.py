@@ -14,26 +14,11 @@ from tqdm import tqdm
 TARGET_SECTIONS = [
     "chief_complaint",
     "past_medical_history",
-    "discharge_condition",
-    "discharge_diagnosis",
-    "discharge_medications",
 ]
 
 SECTION_ALIASES = {
     "chief_complaint": [r"chief complaint", r"cc"],
     "past_medical_history": [r"past medical history", r"pmh"],
-    "discharge_condition": [r"discharge condition", r"condition on discharge"],
-    "discharge_diagnosis": [
-        r"discharge diagnosis",
-        r"discharge diagnoses",
-        r"final diagnosis",
-        r"final diagnoses",
-    ],
-    "discharge_medications": [
-        r"discharge medications",
-        r"medications on discharge",
-        r"discharge meds",
-    ],
 }
 
 STOP_ALIASES = [
@@ -45,6 +30,11 @@ STOP_ALIASES = [
     r"allergies",
     r"attending",
     r"physical exam",
+    r"physical examination",
+    r"history of present illness",
+    r"hpi",
+    r"hospital course",
+    r"brief hospital course",
     r"pertinent results",
     r"labs",
     r"laboratory",
@@ -54,6 +44,15 @@ STOP_ALIASES = [
     r"social history",
     r"family history",
     r"discharge disposition",
+    r"discharge condition",
+    r"condition on discharge",
+    r"discharge diagnosis",
+    r"discharge diagnoses",
+    r"final diagnosis",
+    r"final diagnoses",
+    r"discharge medications",
+    r"medications on discharge",
+    r"discharge meds",
     r"follow[- ]?up",
     r"discharge instructions",
 ]
@@ -154,9 +153,6 @@ def sections_to_text(sections: dict) -> str:
     labels = {
         "chief_complaint": "Chief Complaint",
         "past_medical_history": "Past Medical History",
-        "discharge_condition": "Discharge Condition",
-        "discharge_diagnosis": "Discharge Diagnosis",
-        "discharge_medications": "Discharge Medications",
     }
     parts = []
     for key in TARGET_SECTIONS:
@@ -170,10 +166,10 @@ def build_prompt(section_text: str) -> str:
     return f"""You are a clinical summarization assistant.
 
 Task:
-Write a concise clinical overview of this patient's current hospital admission using only the selected discharge-note sections below.
+Write a concise clinical overview of this patient's presentation using only the selected note sections below.
 
 Requirements:
-- Summarize the reason for admission, relevant past history, discharge diagnoses, discharge condition, and discharge medications when available.
+- Summarize the reason for admission and relevant past medical history when available.
 - Use only information explicitly present in the note. Do not infer missing facts.
 - Do not include names, dates, phone numbers, addresses, IDs, or other personal identifiers.
 - Prefer clinically precise wording over administrative wording.
